@@ -1,6 +1,6 @@
 use fastly::{
     Backend, ConfigStore, Error, Request, Response, SecretStore,
-    error::Context as _,
+    error::{Context as _, anyhow},
     http::{
         HeaderName, Method, StatusCode,
         header::{CACHE_CONTROL, EXPIRES, STRICT_TRANSPORT_SECURITY},
@@ -16,11 +16,13 @@ const DOCS_RS_SECRET_STORE: &str = "docs_rs_secrets";
 // Should match the secret item key in terraform
 const ORIGIN_AUTH_KEY: &str = "origin-auth";
 
-// Should match the dictionary name in terraform
+// Should match the config store name in terraform
 const DOCS_RS_CONFIG: &str = "docs_rs_config";
+// Should match the config names in the config store
 const SHIELD_POP_KEY: &str = "shield_pop";
 const HSTS_MAX_AGE_KEY: &str = "hsts_max_age";
 
+// some constants for headers we read or write
 const FASTLY_CLIENT_IP: HeaderName = HeaderName::from_static("fastly-client-ip");
 const SURROGATE_CONTROL: HeaderName = HeaderName::from_static("surrogate-control");
 const X_ORIGIN_AUTH: HeaderName = HeaderName::from_static("x-origin-auth");
@@ -31,21 +33,22 @@ const X_FORWARDED_HOST: HeaderName = HeaderName::from_static("x-forwarded-host")
 fn main(mut req: Request) -> Result<Response, Error> {
     let config = ConfigStore::open(DOCS_RS_CONFIG);
 
-    let shield_pop = config.get(SHIELD_POP_KEY);
-    let shield: Option<Shield> = shield_pop.as_ref().and_then(|pop| match Shield::new(pop) {
-        Ok(shield) => Some(shield),
-        Err(e) => {
-            eprintln!(
-                "Could not find shield '{}', Disabling the origin shielding.\n {:?}",
-                pop, e
-            );
-            None
-        }
-    });
+    let shield_pop_name = config.get(SHIELD_POP_KEY);
+    let shield: Option<Shield> = shield_pop_name
+        .as_ref()
+        .map(|pop| Shield::new(pop))
+        .transpose()
+        .map_err(|err| {
+            anyhow!(
+                "Could not find shield '{:?}', .\n {:?}",
+                shield_pop_name,
+                err
+            )
+        })?;
 
     // default "settings" for this handler, just the client, the edge POP and
     // direct requests to the origin.
-    let mut origin_backend = Backend::from_name(DOCS_RS_BACKEND)
+    let mut target_backend = Backend::from_name(DOCS_RS_BACKEND)
         .expect("we know the name is valid, and ::from_name just validates that");
     let mut target_is_origin = true;
     let mut response_is_for_client = true;
@@ -64,21 +67,16 @@ fn main(mut req: Request) -> Result<Response, Error> {
             // we're running on an edge POP node, so the request should go to the shield node.
             // -> our client is the user
             // -> our target is the shield POP
-            match shield.encrypted_backend() {
-                Ok(shield_backend) => {
-                    origin_backend = shield_backend;
-                    target_is_origin = false;
-                    response_is_for_client = true;
-                }
-                Err(e) => {
-                    // not sure when this can happen. In any case, fall back to a direct request
-                    // to the origin.
-                    eprintln!(
-                        "Could not create backend for shield pop '{:?}'.\n {:?}",
-                        shield_pop, e
-                    );
-                }
-            }
+            target_backend = shield.encrypted_backend().map_err(|err| {
+                anyhow!(
+                    "Could not create backend for shield pop '{:?}'.\n {:?}",
+                    shield_pop_name,
+                    err
+                )
+            })?;
+
+            target_is_origin = false;
+            response_is_for_client = true;
         }
     }
 
@@ -170,7 +168,7 @@ fn main(mut req: Request) -> Result<Response, Error> {
     }
 
     // Send request to backend, shield POP or origin
-    let mut resp = req.send(origin_backend)?;
+    let mut resp = req.send(target_backend)?;
 
     // set HSTS header
     if response_is_for_client {
