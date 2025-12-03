@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use fastly::{
     Backend, ConfigStore, Error, Request, Response, SecretStore,
+    erl::{ERL, Penaltybox, RateCounter, RateWindow},
     error::Context as _,
     http::{
         HeaderName, Method, StatusCode,
@@ -80,6 +83,34 @@ fn main(mut req: Request) -> Result<Response, Error> {
                 }
             }
         }
+    }
+
+    // Open the rate counter and penalty box.
+    let rc = RateCounter::open("rc");
+    let pb = Penaltybox::open("pb");
+    // Open the Edge Rate Limiter based on the rate counter and penalty box.
+    let limiter = ERL::open(rc, pb);
+
+    // Check if the request should be blocked and update the rate counter.
+    let result = limiter.check_rate(
+        &req.get_client_ip_addr().unwrap().to_string(), // The client to rate limit.
+        1,                            // The number of requests this execution counts as.
+        RateWindow::SixtySecs,        // The time window to count requests within.
+        100, // The maximum average number of requests per second calculated over the rate window.
+        Duration::from_secs(15 * 60), // The duration to block the client if the rate limit is exceeded.
+    );
+
+    let is_blocked: bool = match result {
+        Ok(is_blocked) => is_blocked,
+        Err(err) => {
+            // Failed to check the rate. This is unlikely but it's up to you if you'd like to fail open or closed.
+            eprintln!("Failed to check the rate: {:?}", err);
+            false
+        }
+    };
+    if is_blocked {
+        return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS)
+            .with_body_text_plain("You have sent too many requests recently. Try again later."));
     }
 
     match req.get_method() {
