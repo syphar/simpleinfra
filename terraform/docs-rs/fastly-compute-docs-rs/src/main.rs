@@ -7,6 +7,7 @@ use fastly::{
     http::{
         HeaderName, Method, StatusCode,
         header::{CACHE_CONTROL, EXPIRES, STRICT_TRANSPORT_SECURITY},
+        request::SendErrorCause,
     },
     shielding::Shield,
 };
@@ -29,6 +30,10 @@ const SURROGATE_CONTROL: HeaderName = HeaderName::from_static("surrogate-control
 const X_ORIGIN_AUTH: HeaderName = HeaderName::from_static("x-origin-auth");
 const X_COMPRESS_HINT: HeaderName = HeaderName::from_static("x-compress-hint");
 const X_FORWARDED_HOST: HeaderName = HeaderName::from_static("x-forwarded-host");
+
+#[derive(thiserror::Error, Debug)]
+#[error("rate limit exceeded")]
+struct RateLimitExceeded;
 
 #[fastly::main]
 fn main(mut req: Request) -> Result<Response, Error> {
@@ -85,34 +90,7 @@ fn main(mut req: Request) -> Result<Response, Error> {
         }
     }
 
-    // Open the rate counter and penalty box.
-    let rc = RateCounter::open("rc");
-    let pb = Penaltybox::open("pb");
-    // Open the Edge Rate Limiter based on the rate counter and penalty box.
-    let limiter = ERL::open(rc, pb);
-
-    // Check if the request should be blocked and update the rate counter.
-    let result = limiter.check_rate(
-        &req.get_client_ip_addr().unwrap().to_string(), // The client to rate limit.
-        1,                            // The number of requests this execution counts as.
-        RateWindow::SixtySecs,        // The time window to count requests within.
-        100, // The maximum average number of requests per second calculated over the rate window.
-        Duration::from_secs(15 * 60), // The duration to block the client if the rate limit is exceeded.
-    );
-
-    let is_blocked: bool = match result {
-        Ok(is_blocked) => is_blocked,
-        Err(err) => {
-            // Failed to check the rate. This is unlikely but it's up to you if you'd like to fail open or closed.
-            eprintln!("Failed to check the rate: {:?}", err);
-            false
-        }
-    };
-    if is_blocked {
-        return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS)
-            .with_body_text_plain("You have sent too many requests recently. Try again later."));
-    }
-
+    let mut request_is_cacheable = req.is_cacheable();
     match req.get_method() {
         &Method::GET | &Method::HEAD | &Method::OPTIONS => {
             // for GET/HEAD/OPTIONS request, follow what the backend sends in the headers.
@@ -153,6 +131,7 @@ fn main(mut req: Request) -> Result<Response, Error> {
         &Method::PUT | &Method::POST | &Method::PATCH | &Method::DELETE => {
             // Do not cache other methods
             req.set_pass(true);
+            request_is_cacheable = false;
         }
         _ => {
             return Ok(Response::from_status(StatusCode::METHOD_NOT_ALLOWED));
@@ -200,8 +179,90 @@ fn main(mut req: Request) -> Result<Response, Error> {
         );
     }
 
+    // Open the rate counter and penalty box.
+    let rc = RateCounter::open("rc");
+    // TODO: is there value in having an additional penalty box check at the start of the handler?
+    let pb = Penaltybox::open("pb");
+    // Open the Edge Rate Limiter based on the rate counter and penalty box.
+    let limiter = ERL::open(rc, pb);
+
+    if target_is_origin {
+        // The client to rate limit.
+        // FIXME: if IPv6 → normalize to /64
+        let client_id = req.get_client_ip_addr().unwrap().to_string();
+        if !request_is_cacheable {
+            let result = limiter.check_rate(
+                &client_id,
+                1,
+                RateWindow::SixtySecs,
+                100,
+                Duration::from_secs(15 * 60),
+            );
+
+            let is_blocked: bool = match result {
+                Ok(is_blocked) => is_blocked,
+                Err(err) => {
+                    eprintln!("Failed to check the rate: {:?}", err);
+                    false
+                }
+            };
+            if is_blocked {
+                return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS)
+                    .with_body_text_plain(
+                        "You have sent too many requests recently. Try again later.",
+                    ));
+
+                // resp.set_header(header::RETRY_AFTER, ttl_secs.to_string());
+                // resp.set_header("X-RateLimit-Limit", LIMIT.to_string());
+                // resp.set_header("X-RateLimit-Remaining", remaining.to_string());
+                // resp.set_header("X-RateLimit-Reset", window_end.to_string());
+            }
+        } else {
+            req.set_before_send(move |_req| {
+                let result = limiter.check_rate(
+                    &client_id,
+                    1,
+                    RateWindow::SixtySecs,
+                    100,
+                    Duration::from_secs(15 * 60),
+                );
+
+                let is_blocked: bool = match result {
+                    Ok(is_blocked) => is_blocked,
+                    Err(err) => {
+                        eprintln!("Failed to check the rate: {:?}", err);
+                        false
+                    }
+                };
+                if is_blocked {
+                    Err(SendErrorCause::Custom(RateLimitExceeded.into()))
+                } else {
+                    Ok(())
+                }
+            });
+        }
+    }
+
     // Send request to backend, shield POP or origin
-    let mut resp = req.send(origin_backend)?;
+    let mut resp = match req.send(origin_backend) {
+        Ok(resp) => resp,
+        Err(err) => {
+            if let SendErrorCause::Custom(custom) = err.root_cause() {
+                // FIXME: this needs testing.
+                if custom.is::<RateLimitExceeded>() {
+                    return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS)
+                        .with_body_text_plain(
+                            "You have sent too many requests recently. Try again later.",
+                        ));
+                    // resp.set_header(header::RETRY_AFTER, ttl_secs.to_string());
+                    // resp.set_header("X-RateLimit-Limit", LIMIT.to_string());
+                    // resp.set_header("X-RateLimit-Remaining", remaining.to_string());
+                    // resp.set_header("X-RateLimit-Reset", window_end.to_string());
+                }
+            }
+            return Err(err.into());
+        }
+    };
 
     // set HSTS header
     if response_is_for_client {
@@ -220,5 +281,9 @@ fn main(mut req: Request) -> Result<Response, Error> {
     // the edge & shield POPs.
     resp.set_header(X_COMPRESS_HINT, "on");
 
+    // perhaps?
+    // resp.set_header("X-RateLimit-Limit", LIMIT.to_string());
+    // resp.set_header("X-RateLimit-Remaining", remaining.to_string());
+    // resp.set_header("X-RateLimit-Reset", window_end.to_string());
     Ok(resp)
 }
