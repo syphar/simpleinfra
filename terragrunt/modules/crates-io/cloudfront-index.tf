@@ -1,5 +1,10 @@
 // This file configures index.crates.io
 
+locals {
+  index_default_ttl            = 3600 // 1 hour
+  cloudfront_index_domain_name = "cloudfront-${var.index_domain_name}"
+}
+
 resource "aws_cloudfront_origin_access_identity" "index" {
   comment = "index.crates.io access"
 }
@@ -13,7 +18,10 @@ resource "aws_cloudfront_distribution" "index" {
   default_root_object = "index.html"
   price_class         = "PriceClass_All"
 
-  aliases = [var.index_domain_name]
+  aliases = [
+    local.cloudfront_index_domain_name,
+    var.index_domain_name
+  ]
   viewer_certificate {
     acm_certificate_arn = module.certificate.arn
     ssl_support_method  = "sni-only"
@@ -26,9 +34,9 @@ resource "aws_cloudfront_distribution" "index" {
     compress               = true
     viewer_protocol_policy = "redirect-to-https"
 
-    default_ttl = 3600 // 1 hour
+    default_ttl = local.index_default_ttl
     min_ttl     = 1
-    max_ttl     = 3600 // 1 hour
+    max_ttl     = local.index_default_ttl
 
     forwarded_values {
       headers = [
@@ -75,10 +83,24 @@ data "aws_route53_zone" "index" {
   name = join(".", reverse(slice(reverse(split(".", var.index_domain_name)), 0, 2)))
 }
 
+resource "aws_route53_record" "cloudfront_index_domain" {
+  zone_id = data.aws_route53_zone.index.id
+  name    = local.cloudfront_index_domain_name
+  type    = "CNAME"
+  ttl     = 300
+  records = [aws_cloudfront_distribution.index.domain_name]
+}
+
 resource "aws_route53_record" "index" {
   zone_id = data.aws_route53_zone.index.id
   name    = var.index_domain_name
   type    = "CNAME"
   ttl     = 300
-  records = [aws_cloudfront_distribution.index.domain_name]
+  records = [aws_route53_record.cloudfront_index_domain.fqdn]
+
+  weighted_routing_policy {
+    weight = var.index_cloudfront_weight
+  }
+
+  set_identifier = "cloudfront"
 }
