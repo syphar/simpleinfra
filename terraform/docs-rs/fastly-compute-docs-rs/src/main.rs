@@ -11,7 +11,7 @@ use fastly::{
     },
 };
 
-use crate::rate_limit::RateLimitExceeded;
+use crate::rate_limit::{RateLimitExceeded, RateLimitResult, RequestExt as _};
 
 // Should match the backend name in terraform
 const DOCS_RS_BACKEND: &str = "docs_rs_origin";
@@ -77,7 +77,8 @@ fn main(mut req: Request) -> Result<Response, Error> {
             // Do not cache other methods
             req.set_pass(true);
             if shield.target_is_origin() {
-                // Will never be cached, so alwas count this request.
+                // with `.set_pass` this request will never be cached,
+                // so alwas count this request.
                 if rate_limiter.increment().is_blocked() {
                     return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS));
                 }
@@ -89,11 +90,20 @@ fn main(mut req: Request) -> Result<Response, Error> {
     }
 
     if shield.target_is_origin() {
-        // is the client already in the penalty box?
-        if rate_limiter.is_blocked() {
+        if rate_limiter.client_is_blocked() {
             return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS));
         }
-        req.set_before_send(move |req| rate_limiter.request_before_send(req));
+        req.set_before_send(move |_| {
+            // this callback is called when the request
+            // 1. is cacheable
+            // 2. a cache miss happens
+            // 3. before the request is sent to the backend.
+
+            // So we can count the request,
+            // and block it if the rate limit is exceeded,
+            // before it goes to the backend.
+            rate_limiter.request_before_send()
+        });
 
         let secrets = SecretStore::open(DOCS_RS_SECRET_STORE).expect("failed to open secret store");
         let origin_auth = secrets
@@ -136,16 +146,12 @@ fn main(mut req: Request) -> Result<Response, Error> {
     }
 
     // Send request to backend, shield POP or origin
-    let mut resp = match req.send(shield.target_backend()) {
-        Ok(r) => r,
-        Err(err) => {
-            if let SendErrorCause::Custom(custom) = err.root_cause() {
-                if custom.is::<RateLimitExceeded>() {
-                    return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS));
-                }
-            }
-            return Err(err.into());
+    let mut resp = match req.send_rate_limited(shield.target_backend()) {
+        RateLimitResult::Allowed(r) => r,
+        RateLimitResult::RateLimited => {
+            return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS));
         }
+        RateLimitResult::Err(err) => return Err(err.into()),
     };
 
     // set HSTS header

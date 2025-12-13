@@ -1,7 +1,8 @@
 use fastly::{
-    Request,
+    Request, Response,
+    convert::ToBackend,
     erl::{Penaltybox, RateCounter, RateWindow},
-    http::request::SendErrorCause,
+    http::request::{SendError, SendErrorCause},
 };
 use std::{net::IpAddr, time::Duration};
 
@@ -10,12 +11,40 @@ use crate::FASTLY_CLIENT_IP;
 const RATE_COUNTER: &str = "rc";
 const PENALTY_BOX: &str = "pb";
 
+// FIXME: make these configurable?
+// Perhaps including a "dry-run" thing?
 const MAX_RPS_SUSTAINED: u32 = 10;
 const MAX_BURST: u32 = 60;
 
 // TTL constraints: 1m..1h, truncated to nearest minute;
 // effective minimum can behave like ~2 minutes in practice.  [oai_citation:1‡fastly.com](https://www.fastly.com/documentation/guides/compute/edge-data-storage/working-with-kv-stores/?utm_source=chatgpt.com)
 const PENALTY_TTL: Duration = Duration::from_secs(15 * 60);
+
+pub(crate) enum RateLimitResult {
+    Allowed(Response),
+    RateLimited,
+    Err(SendError),
+}
+
+pub(crate) trait RequestExt {
+    fn send_rate_limited(self, backend: impl ToBackend) -> RateLimitResult;
+}
+
+impl RequestExt for Request {
+    fn send_rate_limited(self, backend: impl ToBackend) -> RateLimitResult {
+        match self.send(backend) {
+            Ok(r) => RateLimitResult::Allowed(r),
+            Err(err) => {
+                if let SendErrorCause::Custom(custom) = err.root_cause() {
+                    if custom.is::<RateLimitExceeded>() {
+                        return RateLimitResult::RateLimited;
+                    }
+                }
+                RateLimitResult::Err(err)
+            }
+        }
+    }
+}
 
 #[derive(thiserror::Error, Debug)]
 #[error("rate limit exceeded")]
@@ -64,7 +93,7 @@ impl RateLimiter {
 
     fn add_to_penalty_box(&self) {
         println!(
-            "adding \"{}\" to penalty box because of too many request",
+            "too many requests from \"{}\". Adding to penalty box.",
             self.key
         );
         if let Err(err) = self.penalty_box.add(&self.key, PENALTY_TTL) {
@@ -86,7 +115,7 @@ impl RateLimiter {
         let burst_rate = self.lookup_rate(RateWindow::OneSec);
         if burst_rate > MAX_BURST {
             eprintln!(
-                "client \"{}\" exceeded burst rate exceeded: {} rps",
+                "client \"{}\" exceeded burst rate: {} rps",
                 self.key, burst_rate
             );
             self.add_to_penalty_box();
@@ -96,8 +125,8 @@ impl RateLimiter {
         let sustained_rate = self.lookup_rate(RateWindow::TenSecs);
         if sustained_rate > MAX_RPS_SUSTAINED {
             eprintln!(
-                "client \"{}\" exceeded sustained rate exceeded: {} rps",
-                self.key, burst_rate
+                "client \"{}\" exceeded sustained rate: {} rps",
+                self.key, sustained_rate
             );
             self.add_to_penalty_box();
             return RateLimitResponse::Blocked;
@@ -106,7 +135,7 @@ impl RateLimiter {
         RateLimitResponse::Allowed
     }
 
-    pub fn is_blocked(&self) -> bool {
+    pub fn client_is_blocked(&self) -> bool {
         match self.penalty_box.has(&self.key) {
             Ok(blocked) => blocked,
             Err(err) => {
@@ -125,12 +154,18 @@ impl RateLimiter {
         self.check_rates()
     }
 
-    /// callable that should be registered on the request to the backend.
-    pub fn request_before_send(&self, _req: &mut Request) -> Result<(), SendErrorCause> {
-        // this callback is called when the request
-        // 1. is cacheable
-        // 2. a cache miss happens
-        // 3. before the request is sent to the backend.
+    /// our callable to be hooked into `Request::set_before_send`.
+    ///
+    /// Uses a custom exception to also block requests from there.
+    /// That exception needs to be handled when sending the request.
+    ///
+    /// Example:
+    /// ```
+    /// req.set_before_send(move |_| {
+    ///     rate_limiter.request_before_send()
+    /// });
+    /// ```
+    pub fn request_before_send(&self) -> Result<(), SendErrorCause> {
         if self.increment().is_blocked() {
             Err(SendErrorCause::Custom(RateLimitExceeded.into()))
         } else {
