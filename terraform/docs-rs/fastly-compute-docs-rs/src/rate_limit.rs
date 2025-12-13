@@ -1,6 +1,6 @@
 use fastly::{
     Request,
-    erl::{ERL, Penaltybox, RateCounter, RateWindow},
+    erl::{Penaltybox, RateCounter, RateWindow},
 };
 use std::{net::IpAddr, time::Duration};
 
@@ -82,7 +82,7 @@ impl RateLimiter {
     }
 }
 
-fn key_from_request<'a>(fastly_client_ip_header: Option<&str>, client_ip: IpAddr) -> String {
+fn key_from_request(fastly_client_ip_header: Option<&str>, client_ip: IpAddr) -> String {
     let client_ip = fastly_client_ip_header
         .and_then(|value| value.parse::<IpAddr>().ok())
         .unwrap_or(client_ip);
