@@ -7,8 +7,11 @@ use fastly::{
     http::{
         HeaderName, Method, StatusCode,
         header::{CACHE_CONTROL, EXPIRES, STRICT_TRANSPORT_SECURITY},
+        request::SendErrorCause,
     },
 };
+
+use crate::rate_limit::RateLimitExceeded;
 
 // Should match the backend name in terraform
 const DOCS_RS_BACKEND: &str = "docs_rs_origin";
@@ -33,12 +36,12 @@ const X_FORWARDED_HOST: HeaderName = HeaderName::from_static("x-forwarded-host")
 fn main(mut req: Request) -> Result<Response, Error> {
     let config = ConfigStore::open(DOCS_RS_CONFIG);
     let shield = shield::Context::load(&config)?;
+    let rate_limiter = rate_limit::RateLimiter::from_request(&req);
 
     // NOTE: to be tested:
     // there is `req.is_cacheable` to check if a request would be cacheable.
     // But: local testing showed it's still `true` after calling `req.set_pass(true)`?
     // Not sure if that's an issue with local integration testing, or the actual behaviour.
-    let mut request_is_cacheable = req.is_cacheable();
     match req.get_method() {
         &Method::GET | &Method::HEAD | &Method::OPTIONS => {
             // for GET/HEAD/OPTIONS request, follow what the backend sends in the headers.
@@ -77,7 +80,12 @@ fn main(mut req: Request) -> Result<Response, Error> {
         &Method::PUT | &Method::POST | &Method::PATCH | &Method::DELETE => {
             // Do not cache other methods
             req.set_pass(true);
-            request_is_cacheable = false;
+            if shield.target_is_origin() {
+                // Will never be cached, so alwas count this request.
+                if rate_limiter.increment().is_blocked() {
+                    return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS));
+                }
+            }
         }
         _ => {
             return Ok(Response::from_status(StatusCode::METHOD_NOT_ALLOWED));
@@ -85,35 +93,10 @@ fn main(mut req: Request) -> Result<Response, Error> {
     }
 
     if shield.target_is_origin() {
-        let rate_limiter = rate_limit::RateLimiter::from_request(&req);
-
         if rate_limiter.is_blocked() {
             return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS));
         }
-
-        if !request_is_cacheable {
-            // when the request is not cacheable, it will always go to the origin,
-            // so we always count the request.
-            rate_limiter.inc();
-        } else {
-            // otherwise we only want to count if a cache miss happens.
-            req.set_before_send(move |_req| {
-                // this callback is called when the request
-                // 1. is cacheable
-                // 2. a cache miss happens
-                // 3. before the request is sent to the backend.
-                //
-                // this means we have to increase the counter differently
-                // for uncacheable requests.
-                rate_limiter.inc();
-
-                // optimization: if this single request leads to us hitting the rate limit,
-                // we could also return some exception here, and convert it below.
-                // But that's quite some code complexity, and only one request more
-                // we allow.
-                Ok(())
-            });
-        }
+        req.set_before_send(move |req| rate_limiter.request_before_send(req));
 
         let secrets = SecretStore::open(DOCS_RS_SECRET_STORE).expect("failed to open secret store");
         let origin_auth = secrets
@@ -156,7 +139,17 @@ fn main(mut req: Request) -> Result<Response, Error> {
     }
 
     // Send request to backend, shield POP or origin
-    let mut resp = req.send(shield.target_backend())?;
+    let mut resp = match req.send(shield.target_backend()) {
+        Ok(r) => r,
+        Err(err) => {
+            if let SendErrorCause::Custom(custom) = err.root_cause() {
+                if custom.is::<RateLimitExceeded>() {
+                    return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS));
+                }
+            }
+            return Err(err.into());
+        }
+    };
 
     // set HSTS header
     if shield.response_is_for_client() {

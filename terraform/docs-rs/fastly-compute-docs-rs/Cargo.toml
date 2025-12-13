@@ -6,3 +6,7 @@ publish = false
 
 [dependencies]
 fastly = "0.11.0"
+thiserror = "2.0.17"
+
+[dev-dependencies]
+test-case = "3.3.1"

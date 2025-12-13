@@ -1,6 +1,7 @@
 use fastly::{
     Request,
     erl::{Penaltybox, RateCounter, RateWindow},
+    http::request::SendErrorCause,
 };
 use std::{net::IpAddr, time::Duration};
 
@@ -11,7 +12,36 @@ const PENALTY_BOX: &str = "pb";
 
 const MAX_RPS_SUSTAINED: u32 = 10;
 const MAX_BURST: u32 = 60;
+
+// TTL constraints: 1m..1h, truncated to nearest minute;
+// effective minimum can behave like ~2 minutes in practice.  [oai_citation:1‡fastly.com](https://www.fastly.com/documentation/guides/compute/edge-data-storage/working-with-kv-stores/?utm_source=chatgpt.com)
 const PENALTY_TTL: Duration = Duration::from_secs(15 * 60);
+
+#[derive(thiserror::Error, Debug)]
+#[error("rate limit exceeded")]
+pub(crate) struct RateLimitExceeded;
+
+#[derive(Debug)]
+pub(crate) enum RateLimitResponse {
+    Blocked,
+    Allowed,
+}
+
+impl From<bool> for RateLimitResponse {
+    fn from(is_blocked: bool) -> Self {
+        if is_blocked {
+            RateLimitResponse::Blocked
+        } else {
+            RateLimitResponse::Allowed
+        }
+    }
+}
+
+impl RateLimitResponse {
+    pub(crate) fn is_blocked(&self) -> bool {
+        matches!(self, RateLimitResponse::Blocked)
+    }
+}
 
 pub(crate) struct RateLimiter {
     key: String,
@@ -32,35 +62,48 @@ impl RateLimiter {
         }
     }
 
-    fn check_rates(&self) -> bool {
-        let burst_rate = self
-            .rate_counter
-            .lookup_rate(&self.key, RateWindow::OneSec)
-            .unwrap();
+    fn add_to_penalty_box(&self) {
+        println!(
+            "adding \"{}\" to penalty box because of too many request",
+            self.key
+        );
+        if let Err(err) = self.penalty_box.add(&self.key, PENALTY_TTL) {
+            eprintln!("Failed to add \"{}\", to penalty box: {:?}", self.key, err);
+        }
+    }
+
+    fn lookup_rate(&self, window: RateWindow) -> u32 {
+        match self.rate_counter.lookup_rate(&self.key, window) {
+            Ok(rate) => rate,
+            Err(err) => {
+                eprintln!("Failed to lookup rate for \"{}\": {:?}", self.key, err);
+                0 // on error, return 0 rate, so we don't rate-limit
+            }
+        }
+    }
+
+    fn check_rates(&self) -> RateLimitResponse {
+        let burst_rate = self.lookup_rate(RateWindow::OneSec);
         if burst_rate > MAX_BURST {
             eprintln!(
                 "client \"{}\" exceeded burst rate exceeded: {} rps",
                 self.key, burst_rate
             );
-            self.penalty_box.add(&self.key, PENALTY_TTL).unwrap();
-            return true;
+            self.add_to_penalty_box();
+            return RateLimitResponse::Blocked;
         }
 
-        let sustained_rate = self
-            .rate_counter
-            .lookup_rate(&self.key, RateWindow::TenSecs)
-            .unwrap();
-
+        let sustained_rate = self.lookup_rate(RateWindow::TenSecs);
         if sustained_rate > MAX_RPS_SUSTAINED {
             eprintln!(
                 "client \"{}\" exceeded sustained rate exceeded: {} rps",
                 self.key, burst_rate
             );
-            self.penalty_box.add(&self.key, PENALTY_TTL).unwrap();
-            return true;
+            self.add_to_penalty_box();
+            return RateLimitResponse::Blocked;
         }
 
-        false
+        RateLimitResponse::Allowed
     }
 
     pub fn is_blocked(&self) -> bool {
@@ -73,12 +116,26 @@ impl RateLimiter {
         }
     }
 
-    /// count a request
-    pub fn inc(&self) {
+    /// count a request, returns if the rate limit is reached
+    /// after the count.
+    pub fn increment(&self) -> RateLimitResponse {
         if let Err(err) = self.rate_counter.increment(&self.key, 1) {
             eprintln!("Failed to increment rate counter: {:?}", err);
         }
-        self.check_rates();
+        self.check_rates()
+    }
+
+    /// callable that should be registered on the request to the backend.
+    pub fn request_before_send(&self, _req: &mut Request) -> Result<(), SendErrorCause> {
+        // this callback is called when the request
+        // 1. is cacheable
+        // 2. a cache miss happens
+        // 3. before the request is sent to the backend.
+        if self.increment().is_blocked() {
+            Err(SendErrorCause::Custom(RateLimitExceeded.into()))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -102,90 +159,38 @@ fn key_from_request(fastly_client_ip_header: Option<&str>, client_ip: IpAddr) ->
 mod tests {
     use super::*;
     use std::net::{Ipv4Addr, Ipv6Addr};
+    use test_case::{test_case, test_matrix};
 
     const V4: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
     const V6: IpAddr = IpAddr::V6(Ipv6Addr::new(
         // 2003:fb:ef0e:800:5172:1949:a0e0:9340
         8195, 251, 61198, 2048, 20850, 6473, 41184, 37696,
     ));
+    const FALLBACK: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 10, 1, 1));
 
-    #[test]
-    fn test_invalid_header_value_falls_back_to_client_ip() {
-        assert_eq!(key_from_request(Some("asdf"), V4), V4.to_string());
+    #[test_matrix(
+        [Some("asdf"), Some(""), None],
+        [V4, V6]
+    )]
+    fn test_invalid_or_empty_header_falls_back_to_client_ip(
+        header_value: Option<&str>,
+        fallback: IpAddr,
+    ) {
+        // the resulting key is the same, no matter if the IP came via header value
+        // or via client-ip fallback.
+        assert_eq!(
+            key_from_request(header_value, fallback),
+            key_from_request(Some(fallback.to_string()).as_deref(), FALLBACK),
+        );
     }
 
-    #[test]
-    fn test_v4_from_header() {
-        let key = key_from_request(Some(V4.to_string()).as_deref(), V6);
-        assert_eq!(key, V4.to_string());
-        assert_eq!(key, "192.168.1.1");
-    }
-
-    #[test]
-    fn test_v6_from_header() {
-        let key = key_from_request(Some(V6.to_string()).as_deref(), V4);
-        assert_eq!(key, "2003:fb:ef0e:800::/64");
-    }
-
-    #[test]
-    fn test_v4_from_client() {
-        let key = key_from_request(None, V4);
-        assert_eq!(key, V4.to_string());
-        assert_eq!(key, "192.168.1.1");
-    }
-
-    #[test]
-    fn test_v6_from_client() {
-        let key = key_from_request(None, V6);
-        assert_eq!(key, "2003:fb:ef0e:800::/64");
+    #[test_case(&V4.to_string() => "192.168.1.1")]
+    #[test_case(&V6.to_string() => "2003:fb:ef0e:800::/64")]
+    fn test_read_from_header(header_value: &str) -> String {
+        // header value wins over client-ip fallback.
+        key_from_request(Some(header_value), FALLBACK)
     }
 }
-
-// if shield.target_is_origin() {
-//     // The client to rate limit.
-//     // FIXME: if IPv6 → normalize to /64
-//     let client_id = req.get_client_ip_addr().unwrap().to_string();
-//     if !request_is_cacheable {
-//         let result = limiter.check_rate(
-//             &client_id,
-//             1,
-//             RateWindow::SixtySecs,
-//             100,
-//             Duration::from_secs(15 * 60),
-//         );
-
-//         let is_blocked: bool = match result {
-//             Ok(is_blocked) => is_blocked,
-//             Err(err) => {
-//                 eprintln!("Failed to check the rate: {:?}", err);
-//                 false
-//             }
-//         };
-//         if is_blocked {
-//             return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS)
-//                 .with_body_text_plain(
-//                     "You have sent too many requests recently. Try again later.",
-//                 ));
-
-//             // resp.set_header(header::RETRY_AFTER, ttl_secs.to_string());
-//             // resp.set_header("X-RateLimit-Limit", LIMIT.to_string());
-//             // resp.set_header("X-RateLimit-Remaining", remaining.to_string());
-//             // resp.set_header("X-RateLimit-Reset", window_end.to_string());
-//         }
-//     } else {
-//         req.set_before_send(move |_req| {
-//             // this callback is called
-//             // - after a cache miss, but
-//             // - before sending the request to the backend
-//             //
-//             // So the perfect time to rate-limit, if needed.
-//             let result = limiter.check_rate(
-//                 &client_id,
-//                 1,
-//                 RateWindow::SixtySecs,
-//                 100,
-//                 Duration::from_secs(15 * 60),
-//             );
 
 //             let is_blocked: bool = match result {
 //                 Ok(is_blocked) => is_blocked,
