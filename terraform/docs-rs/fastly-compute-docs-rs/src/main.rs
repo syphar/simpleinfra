@@ -38,10 +38,6 @@ fn main(mut req: Request) -> Result<Response, Error> {
     let shield = shield::Context::load(&config)?;
     let rate_limiter = rate_limit::RateLimiter::from_request(&req);
 
-    // NOTE: to be tested:
-    // there is `req.is_cacheable` to check if a request would be cacheable.
-    // But: local testing showed it's still `true` after calling `req.set_pass(true)`?
-    // Not sure if that's an issue with local integration testing, or the actual behaviour.
     match req.get_method() {
         &Method::GET | &Method::HEAD | &Method::OPTIONS => {
             // for GET/HEAD/OPTIONS request, follow what the backend sends in the headers.
@@ -93,6 +89,7 @@ fn main(mut req: Request) -> Result<Response, Error> {
     }
 
     if shield.target_is_origin() {
+        // is the client already in the penalty box?
         if rate_limiter.is_blocked() {
             return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS));
         }
