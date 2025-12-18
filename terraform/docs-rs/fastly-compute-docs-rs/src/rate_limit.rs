@@ -4,7 +4,10 @@ use fastly::{
     erl::{Penaltybox, RateCounter, RateWindow},
     http::request::{SendError, SendErrorCause},
 };
-use std::{net::IpAddr, time::Duration};
+use std::{
+    net::{IpAddr, Ipv6Addr},
+    time::Duration,
+};
 
 use crate::FASTLY_CLIENT_IP;
 
@@ -17,7 +20,8 @@ const MAX_RPS_SUSTAINED: u32 = 10;
 const MAX_BURST: u32 = 60;
 
 // TTL constraints: 1m..1h, truncated to nearest minute;
-// effective minimum can behave like ~2 minutes in practice.  [oai_citation:1‡fastly.com](https://www.fastly.com/documentation/guides/compute/edge-data-storage/working-with-kv-stores/?utm_source=chatgpt.com)
+// effective minimum can behave like ~2 minutes in practice.
+// https://www.fastly.com/documentation/guides/compute/edge-data-storage/working-with-kv-stores/
 const PENALTY_TTL: Duration = Duration::from_secs(15 * 60);
 
 pub(crate) enum RateLimitResult {
@@ -35,12 +39,13 @@ impl RequestExt for Request {
         match self.send(backend) {
             Ok(r) => RateLimitResult::Allowed(r),
             Err(err) => {
-                if let SendErrorCause::Custom(custom) = err.root_cause() {
-                    if custom.is::<RateLimitExceeded>() {
-                        return RateLimitResult::RateLimited;
-                    }
+                if let SendErrorCause::Custom(custom) = err.root_cause()
+                    && custom.is::<RateLimitExceeded>()
+                {
+                    RateLimitResult::RateLimited
+                } else {
+                    RateLimitResult::Err(err)
                 }
-                RateLimitResult::Err(err)
             }
         }
     }
@@ -92,7 +97,7 @@ impl RateLimiter {
     }
 
     fn add_to_penalty_box(&self) {
-        println!(
+        eprintln!(
             "too many requests from \"{}\". Adding to penalty box.",
             self.key
         );
@@ -184,7 +189,7 @@ fn key_from_request(fastly_client_ip_header: Option<&str>, client_ip: IpAddr) ->
         IpAddr::V6(addr) => {
             // Keep first 4 segments (64 bits), zero the rest
             let se = addr.segments();
-            let prefix64 = std::net::Ipv6Addr::new(se[0], se[1], se[2], se[3], 0, 0, 0, 0);
+            let prefix64 = Ipv6Addr::new(se[0], se[1], se[2], se[3], 0, 0, 0, 0);
             format!("{}/64", prefix64)
         }
     }
@@ -193,7 +198,7 @@ fn key_from_request(fastly_client_ip_header: Option<&str>, client_ip: IpAddr) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::Ipv4Addr;
     use test_case::{test_case, test_matrix};
 
     const V4: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));

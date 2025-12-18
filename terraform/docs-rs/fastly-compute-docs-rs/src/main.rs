@@ -36,6 +36,8 @@ const X_FORWARDED_HOST: HeaderName = HeaderName::from_static("x-forwarded-host")
 fn main(mut req: Request) -> Result<Response, Error> {
     let config = ConfigStore::open(DOCS_RS_CONFIG);
     let shield = shield::Context::load(&config)?;
+
+    // FIXME: we want rate limiting init / logic only when target = origin
     let rate_limiter = rate_limit::RateLimiter::from_request(&req);
 
     match req.get_method() {
@@ -146,6 +148,7 @@ fn main(mut req: Request) -> Result<Response, Error> {
     }
 
     // Send request to backend, shield POP or origin
+    // FIXME: only check rate limits when target is origin?
     let mut resp = match req.send_rate_limited(shield.target_backend()) {
         RateLimitResult::Allowed(r) => r,
         RateLimitResult::RateLimited => {
