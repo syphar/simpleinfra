@@ -115,6 +115,25 @@ resource "fastly_service_vcl" "index" {
       }
     EOT
   }
+
+  snippet {
+    name    = "rewrite root to index"
+    type    = "recv"
+    content = <<-VCL
+      if (req.url == "/") {
+        set req.url = "/index.html";
+      }
+    VCL
+  }
+
+  snippet {
+    name    = "enable segmented caching"
+    type    = "recv"
+    content = <<-VCL
+      set req.enable_segmented_caching = true;
+      set segmented_caching.block_size = 10000000;
+    VCL
+  }
 }
 
 module "fastly_tls_subscription_index" {
