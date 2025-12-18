@@ -36,9 +36,9 @@ const X_FORWARDED_HOST: HeaderName = HeaderName::from_static("x-forwarded-host")
 fn main(mut req: Request) -> Result<Response, Error> {
     let config = ConfigStore::open(DOCS_RS_CONFIG);
     let shield = shield::Context::load(&config)?;
-
-    // FIXME: we want rate limiting init / logic only when target = origin
-    let rate_limiter = rate_limit::RateLimiter::from_request(&req);
+    let rate_limiter = shield
+        .target_is_origin()
+        .then(|| rate_limit::RateLimiter::from_request(&req));
 
     match req.get_method() {
         &Method::GET | &Method::HEAD | &Method::OPTIONS => {
@@ -78,7 +78,7 @@ fn main(mut req: Request) -> Result<Response, Error> {
         &Method::PUT | &Method::POST | &Method::PATCH | &Method::DELETE => {
             // Do not cache other methods
             req.set_pass(true);
-            if shield.target_is_origin() {
+            if let Some(ref rate_limiter) = rate_limiter {
                 // with `.set_pass` this request will never be cached,
                 // so alwas count this request.
                 if rate_limiter.increment().is_blocked() {
@@ -92,20 +92,22 @@ fn main(mut req: Request) -> Result<Response, Error> {
     }
 
     if shield.target_is_origin() {
-        if rate_limiter.client_is_blocked() {
-            return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS));
-        }
-        req.set_before_send(move |_| {
-            // this callback is called when the request
-            // 1. is cacheable
-            // 2. a cache miss happens
-            // 3. before the request is sent to the backend.
+        if let Some(rate_limiter) = rate_limiter {
+            if rate_limiter.client_is_blocked() {
+                return Ok(Response::from_status(StatusCode::TOO_MANY_REQUESTS));
+            }
+            req.set_before_send(move |_| {
+                // this callback is called when the request
+                // 1. is cacheable
+                // 2. a cache miss happens
+                // 3. before the request is sent to the backend.
 
-            // So we can count the request,
-            // and block it if the rate limit is exceeded,
-            // before it goes to the backend.
-            rate_limiter.request_before_send()
-        });
+                // So we can count the request,
+                // and block it if the rate limit is exceeded,
+                // before it goes to the backend.
+                rate_limiter.request_before_send()
+            });
+        }
 
         let secrets = SecretStore::open(DOCS_RS_SECRET_STORE).expect("failed to open secret store");
         let origin_auth = secrets
@@ -148,7 +150,8 @@ fn main(mut req: Request) -> Result<Response, Error> {
     }
 
     // Send request to backend, shield POP or origin
-    // FIXME: only check rate limits when target is origin?
+    // `send_rate_limited` will only catch an additional rate-limiting exception.
+    // If rate-limiting is disabled, it will just send the request normally.
     let mut resp = match req.send_rate_limited(shield.target_backend()) {
         RateLimitResult::Allowed(r) => r,
         RateLimitResult::RateLimited => {
