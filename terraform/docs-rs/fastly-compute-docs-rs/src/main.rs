@@ -29,6 +29,7 @@ const FASTLY_FF: HeaderName = HeaderName::from_static("fastly-ff");
 const X_ORIGIN_AUTH: HeaderName = HeaderName::from_static("x-origin-auth");
 const X_COMPRESS_HINT: HeaderName = HeaderName::from_static("x-compress-hint");
 const X_FORWARDED_HOST: HeaderName = HeaderName::from_static("x-forwarded-host");
+const X_FORWARDED_PROTO: HeaderName = HeaderName::from_static("x-forwarded-proto");
 
 #[fastly::main]
 fn main(mut req: Request) -> Result<Response, Error> {
@@ -107,6 +108,19 @@ fn main(mut req: Request) -> Result<Response, Error> {
                 .context("missing hostname in request URL")?
                 .to_owned(),
         );
+    }
+
+    if req.get_header(X_FORWARDED_PROTO).is_none() {
+        // When the request doesn't have an X-Forwarded-Proto header,
+        // set one based on the client connection protocol.
+        // On shield POP requests, this should already have been set by the edge POP.
+        let proto = if req.get_tls_protocol().is_some() {
+            "https"
+        } else {
+            "http"
+        };
+
+        req.set_header(X_FORWARDED_PROTO, proto);
     }
 
     if req.get_header(FASTLY_CLIENT_IP).is_none() {
