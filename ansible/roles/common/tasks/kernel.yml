@@ -15,3 +15,27 @@
   register: algif_aead_rmmod
   changed_when: algif_aead_rmmod.rc == 0
   failed_when: false
+
+# Mitigation for dirtyfrag (https://github.com/V4bel/dirtyfraf)
+
+- name: disable esp4, esp6 and rxrpc kernel modules
+  copy:
+    dest: /etc/modprobe.d/dirtyfrag.conf
+    content: |
+      install esp4 /bin/false
+      install esp6 /bin/false
+      install rxrpc /bin/false
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: unload esp4, esp6 and rxrpc kernel modules
+  command: rmmod esp4 esp6 rxrpc
+  register: esp4_esp6_rxrpc_rmmod
+  changed_when: esp4_esp6_rxrpc_rmmod.rc == 0
+  failed_when: false
+
+- name: drop vm pages caches
+  ansible.builtin.command: sysctl -w vm.drop_caches=3
+  become: true
+  changed_when: true
