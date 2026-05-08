@@ -6,6 +6,17 @@ set -euo pipefail
 echo "install algif_aead /bin/false" | sudo tee /etc/modprobe.d/disable-algif.conf
 sudo rmmod algif_aead 2>/dev/null || true
 
+# Workaroud for dirtyfrag
+# https://github.com/V4bel/dirtyfrag/blob/master/README.md#mitigation
+# https://ubuntu.com/blog/dirty-frag-linux-vulnerability-fixes-available
+sudo tee /etc/modprobe.d/dirtyfrag.conf > /dev/null <<'EOF'
+install esp4 /bin/false
+install esp6 /bin/false
+install rxrpc /bin/false
+EOF
+sudo rmmod esp4 esp6 rxrpc 2>/dev/null || true
+sudo echo 3 > /proc/sys/vm/drop_caches || true
+
 mkdir -p /opt
 cd /opt
 sudo apt update
