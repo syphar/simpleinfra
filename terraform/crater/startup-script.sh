@@ -15,7 +15,7 @@ install esp6 /bin/false
 install rxrpc /bin/false
 EOF
 sudo rmmod esp4 esp6 rxrpc 2>/dev/null || true
-sudo echo 3 > /proc/sys/vm/drop_caches || true
+sudo sysctl -w vm.drop_caches=3 || true
 
 mkdir -p /opt
 cd /opt
