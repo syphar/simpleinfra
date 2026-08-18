@@ -33,12 +33,12 @@ resource "fastly_ngwaf_workspace_signal" "webapp_rate_limit" {
 # https://github.com/rust-lang/docs.rs/issues/2779
 # https://blog.nginx.org/blog/rate-limiting-nginx
 #
-# The one-minute window maintains the sustained rate of one request per second,
+# The one-minute window maintains the sustained rate of 10 requests per second,
 # while allowing docs.rs pages to load their 20-30 assets in a burst when uncached.
 resource "fastly_ngwaf_workspace_rule" "webapp_per_ip_rate_limit" {
   workspace_id = fastly_ngwaf_workspace.webapp.id
   type         = "rate_limit"
-  description  = "Rate limit per client IP to 60 requests per minute"
+  description  = "Rate limit per client IP to 600 requests per minute"
   enabled      = true
 
   # Fastly NGWAF requires at least one rule condition.
@@ -58,7 +58,7 @@ resource "fastly_ngwaf_workspace_rule" "webapp_per_ip_rate_limit" {
 
   rate_limit {
     signal    = fastly_ngwaf_workspace_signal.webapp_rate_limit.reference_id
-    threshold = 60
+    threshold = 600
     interval  = 60
     duration  = 60
 
