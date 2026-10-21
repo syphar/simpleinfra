@@ -26,8 +26,8 @@ on the matching host. Separate task definitions preserve per-host CPU/memory
 build limits and allow different instance sizes. The existing Fargate services
 continue to run on Fargate; builder services explicitly use EC2 and no ALB.
 
-Apply the VPC unit to publish its bastion hostname output, then apply the docs.rs
-unit. Publish the `build-server` image from docs.rs's Docker pipeline. ECS retries
+Apply the docs.rs unit. Publish the `build-server` image from docs.rs's Docker
+pipeline. ECS retries
 startup if the image is not available yet.
 
 Application configuration lives in the ECS task definition. ECS injects the

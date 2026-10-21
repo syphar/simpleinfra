@@ -27,9 +27,6 @@ the extension.
 Builder hosts are provisioned automatically through cloud-init.
 See the [builder role documentation](roles/docs-rs-builder/README.md) for setup.
 
-The generic `./apply` also accepts `--inventory <path>` to supplement an
-environment's static inventory with a generated one.
-
 ### Executing a playbook on a new server
 
 By default the `./apply` script uses your current username to connect to the
