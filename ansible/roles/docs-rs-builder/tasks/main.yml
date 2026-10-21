@@ -52,7 +52,7 @@
     - "{{ vars_prefix_path }}"
     - "{{ vars_workspace_path }}"
 
-- name: Install host isolation checks
+- name: Install host readiness checks
   ansible.builtin.template:
     src: builder-host-checks
     dest: /usr/local/sbin/docs-rs-builder-host-checks

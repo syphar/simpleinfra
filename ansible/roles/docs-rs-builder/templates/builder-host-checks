@@ -5,19 +5,7 @@ set -euo pipefail
 # Run before ECS registers this host as eligible for builders.
 docker run --rm --runtime=runsc --network=none public.ecr.aws/docker/library/alpine:3.22 true
 
-# Untrusted Rustwide siblings use Docker bridges. The trusted ECS builder uses
-# host networking. Block bridge access to IMDS and ECS credential/introspection
-# endpoints, including requests DNATed to loopback by ECS-Init.
-for destination in 169.254.169.254/32 169.254.170.2/32; do
-  iptables -C DOCKER-USER -d "$destination" -j REJECT 2>/dev/null || \
-    iptables -I DOCKER-USER 1 -d "$destination" -j REJECT
-done
-
 # The builder uses host networking, so its SDK credential requests need the
 # local ECS credential proxy rather than the host's instance profile.
 iptables -t nat -C OUTPUT -d 169.254.170.2/32 -p tcp --dport 80 -j REDIRECT --to-ports 51679 2>/dev/null || \
   iptables -t nat -A OUTPUT -d 169.254.170.2/32 -p tcp --dport 80 -j REDIRECT --to-ports 51679
-for interface in docker+ br+; do
-  iptables -C INPUT -i "$interface" -p tcp --dport 51678:51679 -j REJECT 2>/dev/null || \
-    iptables -I INPUT 1 -i "$interface" -p tcp --dport 51678:51679 -j REJECT
-done

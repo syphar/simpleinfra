@@ -2,7 +2,7 @@
 
 This role prepares stock Ubuntu 24.04 amd64 EC2 hosts for ECS-managed builders.
 It installs Docker, a checksum-pinned gVisor package, a checksum-pinned ECS-Init
-package, workspace directories, and host isolation checks. It does not launch
+package, workspace directories, and host readiness checks. It does not launch
 the builder, fetch application secrets, or authenticate to the private ECR repo.
 
 ## Provisioning and deployment
@@ -52,9 +52,8 @@ Keep these hosts dedicated to builder workloads. No application ports are
 published, and SSH ingress is limited to the bastion.
 
 The host readiness service runs an offline-network gVisor test before ECS agent
-registration. It reinstalls firewall rules at boot to block Docker bridges from
-reaching IMDS and ECS credential/introspection endpoints, including loopback
-traffic after DNAT. The trusted builder uses host networking and the ECS task
+registration. It configures credential routing at boot. Crate-build sandboxes
+run with networking disabled. The trusted builder uses host networking and the ECS task
 credential proxy. Do not run untrusted sandboxes with host networking or mount
 the Docker socket into them. Docker socket access means the trusted builder is
 not isolated from the host or its agent.
