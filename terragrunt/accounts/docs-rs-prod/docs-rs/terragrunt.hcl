@@ -39,6 +39,7 @@ inputs = {
   }
   builders = {
     # Production builder size and disk performance.
+    # The current legacy setup uses EBS with 8000 IOPS and 1000 MiB/s throughput.
     builder-1 = {
       instance_type     = "c6a.8xlarge" # 32 vCPU. 64 GiB RAM.
       volume_iops       = 8000
