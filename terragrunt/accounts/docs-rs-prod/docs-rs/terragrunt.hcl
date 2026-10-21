@@ -1,3 +1,7 @@
+locals {
+  builder_role_dir = "${get_repo_root()}/ansible/roles/docs-rs-builder"
+}
+
 terraform {
   source = "../../../modules//docs-rs"
 }
@@ -27,8 +31,15 @@ inputs = {
   domain                    = "docs-rs-prod.rust-lang.net"
   bastion_security_group_id = dependency.vpc.outputs.bastion_security_group_id
   bastion_hostname          = dependency.vpc.outputs.bastion_hostname
+  builder_provisioning = {
+    role_files = {
+      for path in fileset(local.builder_role_dir, "**") :
+      path => base64gzip(file("${local.builder_role_dir}/${path}"))
+      if path != "README.md"
+    }
+  }
   builders = {
-    # Preserve the existing production builder's size and disk performance.
+    # Production builder size and disk performance.
     builder-1 = {
       instance_type     = "c6a.8xlarge" # 32 vCPU. 64 GiB RAM.
       volume_iops       = 8000

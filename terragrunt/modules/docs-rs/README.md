@@ -79,8 +79,8 @@ Builders run as ECS daemon tasks on dedicated Ubuntu EC2 hosts, using gVisor
 for sibling crate-build containers. Terraform owns hosts, per-host services,
 task configuration, secret references, and IAM roles. The
 [Ansible role](../../../ansible/roles/docs-rs-builder/README.md) installs Docker,
-gVisor, and the ECS agent. Staging embeds that role into cloud-init and provisions
-new hosts automatically; production remains opt-in. ECS manages image deployment,
+gVisor, and the ECS agent. Both environments embed that role into cloud-init and provision
+new hosts automatically. ECS manages image deployment,
 secret injection, and CloudWatch logs. No custom AMI or automatic fleet scaling
 is required.
 

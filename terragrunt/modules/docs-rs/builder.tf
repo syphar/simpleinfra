@@ -40,7 +40,7 @@ resource "aws_instance" "builder" {
   iam_instance_profile        = aws_iam_instance_profile.builder.name
   associate_public_ip_address = true
 
-  user_data                   = var.builder_provisioning == null ? null : local.builder_user_data[each.key]
+  user_data                   = local.builder_user_data[each.key]
   user_data_replace_on_change = true
 
   # Register only after the ECS agent's instance permissions are attached.
@@ -70,7 +70,7 @@ resource "aws_instance" "builder" {
     ignore_changes = [ami]
 
     precondition {
-      condition     = var.builder_provisioning == null ? true : length(local.builder_user_data[each.key]) <= 16384
+      condition     = length(local.builder_user_data[each.key]) <= 16384
       error_message = "Builder cloud-init exceeds EC2's 16 KiB user data limit."
     }
   }
@@ -99,32 +99,14 @@ module "builder_ecr" {
   name   = "docs-rs-build-server"
 }
 
-resource "aws_iam_role_policy_attachment" "builder_agent" {
-  count = var.builder_provisioning == null ? 0 : 1
+moved {
+  from = aws_iam_role_policy_attachment.builder_agent[0]
+  to   = aws_iam_role_policy_attachment.builder_agent
+}
 
+resource "aws_iam_role_policy_attachment" "builder_agent" {
   role       = aws_iam_role.builder.name
   policy_arn = "arn:${data.aws_partition.builder.partition}:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
-}
-
-# Keep the legacy startup permissions until an account opts into ECS.
-moved {
-  from = aws_iam_role_policy.builder_configuration
-  to   = aws_iam_role_policy.builder_configuration[0]
-}
-
-resource "aws_iam_role_policy" "builder_configuration" {
-  count = var.builder_provisioning == null ? 1 : 0
-
-  name = "builder-configuration"
-  role = aws_iam_role.builder.name
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["ssm:GetParameter"]
-      Resource = [aws_ssm_parameter.connection_url.arn, local.github_token_arn]
-    }]
-  })
 }
 
 data "aws_ami" "ubuntu24" {
@@ -171,7 +153,7 @@ resource "aws_iam_role" "builder" {
 }
 
 resource "aws_iam_role_policy" "builder_s3" {
-  role = var.builder_provisioning == null ? aws_iam_role.builder.name : aws_iam_role.builder_task.name
+  role = aws_iam_role.builder_task.name
   name = "builder_s3"
 
   policy = jsonencode({

@@ -1,5 +1,5 @@
 locals {
-  builder_user_data = var.builder_provisioning == null ? {} : {
+  builder_user_data = {
     for name, builder in var.builders : name => "#cloud-config\n${jsonencode({
       write_files = concat([
         {

@@ -7,7 +7,7 @@ the builder, fetch application secrets, or authenticate to the private ECR repo.
 
 ## Provisioning and deployment
 
-Staging enables `builder_provisioning` in Terragrunt. It compresses the role
+Both environments supply the required `builder_provisioning` in Terragrunt. It compresses the role
 files from this checkout into cloud-init, so first boot uses exactly the role
 reviewed alongside the infrastructure change. No separately published Git commit,
 controller credentials, SSH bootstrap, or custom AMI is required. The payload
@@ -28,15 +28,13 @@ continue to run on Fargate; builder services explicitly use EC2 and no ALB.
 
 Apply the VPC unit to publish its bastion hostname output, then apply the docs.rs
 unit. Publish the `build-server` image from docs.rs's Docker pipeline. ECS retries
-startup if the image is not available yet. Production remains opt-in: configure
-`builder_provisioning` there only after reviewing host sizing and deployment.
+startup if the image is not available yet.
 
 Application configuration lives in the ECS task definition. ECS injects the
 database URL and GitHub token from SSM using the execution role, pulls ECR images,
 and sends application logs to `/ecs/docs-rs-builder`. The task role supplies S3
-access. In ECS mode the instance role supplies the agent's permissions, with no direct
-application S3 or SSM permissions. Manual accounts retain their existing instance
-permissions until they opt into ECS. Secret rotation requires replacing the task.
+access. The instance role supplies the agent's permissions, with no direct
+application S3 or SSM permissions. Secret rotation requires replacing the task.
 
 `builder_image_version` selects a tag or digest; it is separate from host
 provisioning. The docs.rs deploy workflow discovers builder services and forces

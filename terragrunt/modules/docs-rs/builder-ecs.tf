@@ -6,8 +6,6 @@ locals {
     "%s%s%s", module.builder_ecr.url,
     startswith(var.builder_image_version, "sha256:") ? "@" : ":", var.builder_image_version,
   )
-  # Production remains opt-in until its host configuration has been reviewed.
-  ecs_builders = var.builder_provisioning == null ? {} : var.builders
   builder_task_trust = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -33,7 +31,7 @@ resource "aws_iam_role" "builder_execution" {
 }
 
 resource "aws_iam_role_policy_attachment" "builder_ecr_pull" {
-  role       = var.builder_provisioning == null ? aws_iam_role.builder.name : aws_iam_role.builder_execution.name
+  role       = aws_iam_role.builder_execution.name
   policy_arn = module.builder_ecr.policy_pull_arn
 }
 
@@ -63,7 +61,7 @@ resource "aws_iam_role_policy" "builder_execution" {
 }
 
 resource "aws_ecs_task_definition" "builder" {
-  for_each = local.ecs_builders
+  for_each = var.builders
 
   family                   = "docs-rs-builder-${each.key}"
   requires_compatibilities = ["EC2"]
@@ -154,7 +152,7 @@ resource "aws_ecs_task_definition" "builder" {
 # A host-specific daemon service preserves different build limits and gives
 # exactly one ECS-managed builder on each matching named EC2 host.
 resource "aws_ecs_service" "builder" {
-  for_each = local.ecs_builders
+  for_each = var.builders
 
   name                = "docs-rs-builder-${each.key}"
   cluster             = var.cluster_config.cluster_id

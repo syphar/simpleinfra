@@ -15,7 +15,7 @@ resource "aws_iam_role_policy" "builder_ci" {
         Action   = ["ecs:ListServices"]
         Resource = "*"
       },
-      ], length(local.ecs_builders) == 0 ? [] : [{
+      ], length(var.builders) == 0 ? [] : [{
         Effect   = "Allow"
         Action   = ["ecs:UpdateService", "ecs:DescribeServices"]
         Resource = [for service in aws_ecs_service.builder : service.id]

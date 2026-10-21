@@ -83,15 +83,15 @@ variable "bastion_hostname" {
 }
 
 variable "builder_provisioning" {
-  description = "Enable first-boot ECS host provisioning with compressed Ansible role files from this checkout. Null keeps EC2 host provisioning manual."
+  description = "First-boot ECS host provisioning with compressed Ansible role files from this checkout."
   type = object({
     role_files      = map(string)
     ansible_version = optional(string, "2.17.1")
   })
-  default = null
+  nullable = false
 
   validation {
-    condition = var.builder_provisioning == null ? true : (
+    condition = (
       contains(keys(var.builder_provisioning.role_files), "tasks/main.yml") &&
       alltrue([for path in keys(var.builder_provisioning.role_files) : !startswith(path, "/") && !contains(split("/", path), "..")]) &&
       can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.builder_provisioning.ansible_version))

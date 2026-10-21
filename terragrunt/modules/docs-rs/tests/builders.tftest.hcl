@@ -60,22 +60,6 @@ variables {
   }
 }
 
-run "manual_accounts_have_no_builder_services" {
-  command = plan
-  plan_options {
-    target = [aws_ecs_service.builder, aws_iam_role_policy.builder_s3, aws_iam_role_policy.builder_configuration]
-  }
-  assert {
-    condition     = length(aws_ecs_service.builder) == 0
-    error_message = "Existing manual accounts must opt into ECS host provisioning."
-  }
-  assert {
-    condition     = aws_iam_role_policy.builder_s3.role == aws_iam_role.builder.name && length(aws_iam_role_policy.builder_configuration) == 1
-    error_message = "Manual accounts must retain instance-level application permissions until migration."
-  }
-
-}
-
 run "ecs_builders" {
   command = plan
   plan_options {
