@@ -94,7 +94,7 @@ resource "aws_ecs_task_definition" "builder" {
       DOCSRS_AWS_SDK_MAX_RETRIES                       = 10
       DOCSRS_INCLUDE_DEFAULT_TARGETS                   = false
       DOCSRS_BUILD_CPU_LIMIT                           = tostring(each.value.build_cpu_limit)
-      DOCSRS_BUILD_DEFAULT_MEMORY_LIMIT                = tostring(each.value.build_memory_limit)
+      DOCSRS_BUILD_DEFAULT_MEMORY_LIMIT                = each.value.build_memory_limit
       DOCSRS_BUILD_WORKSPACE_REINITIALIZATION_INTERVAL = "2h"
     }) : { name = name, value = value }]
 

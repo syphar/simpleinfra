@@ -42,7 +42,7 @@ inputs = {
     # 16 vCPU, 32 GiB RAM: headroom for 12-vCPU builds and 12 GiB memory exceptions.
     instance_type      = "c8i.4xlarge"
     build_cpu_limit    = 12
-    build_memory_limit = 6442450944 # 6 GiB default; per-crate exceptions can raise this.
+    build_memory_limit = "6GiB" # default; per-crate exceptions can raise this.
     # Current legacy EBS performance.
     volume_iops       = 8000
     volume_throughput = 1000

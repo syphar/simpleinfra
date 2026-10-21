@@ -43,7 +43,7 @@ inputs = {
     # Each host: 4 vCPU, 8 GiB RAM, with a 6 GiB build limit.
     instance_type      = "c8i.xlarge"
     build_cpu_limit    = 3
-    build_memory_limit = 6442450944 # 6 GiB per crate-build container.
+    build_memory_limit = "6GiB" 
   }
   db_instance_class = "db.t4g.small" # 2 vCPUs. 2 GiB RAM.
 }

@@ -49,7 +49,7 @@ variable "builder_config" {
     volume_iops        = optional(number, 3000)
     volume_throughput  = optional(number, 125)
     build_cpu_limit    = optional(number, 1)
-    build_memory_limit = optional(number, 2147483648)
+    build_memory_limit = optional(string, "2GiB")
   })
   nullable = false
 }
