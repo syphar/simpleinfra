@@ -1,4 +1,6 @@
 import importlib.util
+import io
+import json
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -17,42 +19,42 @@ class BuilderProvisioningTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.state = Path(self.temp.name)
         self.config = {
-            "repository_url": "https://example.com/source.git",
-            "revision": "a" * 40,
+            "ecs_cluster": "test-builders",
             "ansible_version": "2.17.1",
         }
         self.commands = []
 
     def mock_run(self, *args, **kwargs):
         self.commands.append((args, kwargs))
-        return SimpleNamespace(stdout=self.config["revision"] + "\n", returncode=0)
+        return SimpleNamespace(returncode=0)
 
-    def test_local_pinned_provisioning_and_success_marker(self):
+    def test_local_provisioning_and_registered_host_marker(self):
         with mock.patch.object(provisioner, "STATE", self.state), \
              mock.patch.object(provisioner, "run", side_effect=self.mock_run), \
-             mock.patch.object(provisioner.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="true\n")):
+             mock.patch.object(provisioner.urllib.request, "urlopen", return_value=io.BytesIO(json.dumps({"ContainerInstanceArn": "arn:test", "Cluster": "test-builders"}).encode())):
             provisioner.provision(self.config)
-        self.assertEqual((self.state / "success").read_text(), self.config["revision"] + "\n")
-        fetch = next(args for args, _ in self.commands if "fetch" in args)
-        self.assertEqual(fetch[-1], self.config["revision"])
+        self.assertEqual((self.state / "success").read_text(), "arn:test\n")
+        self.assertFalse(any("git" in args for args, _ in self.commands))
         ansible = next(args for args, _ in self.commands if str(args[0]).endswith("ansible-playbook"))
         self.assertIn("localhost,", ansible)
         self.assertIn("--connection=local", ansible)
         self.assertIn("@/etc/docs-rs/provision-vars.json", ansible)
 
-    def test_failed_builder_start_is_not_marked_successful(self):
+    def test_failed_registration_is_not_marked_successful(self):
         with mock.patch.object(provisioner, "STATE", self.state), \
              mock.patch.object(provisioner, "run", side_effect=self.mock_run), \
-             mock.patch.object(provisioner.subprocess, "run", return_value=SimpleNamespace(returncode=1, stdout="")), \
+             mock.patch.object(provisioner.urllib.request, "urlopen", side_effect=OSError("unavailable")), \
              mock.patch.object(provisioner.time, "sleep"):
-            with self.assertRaisesRegex(RuntimeError, "did not start"):
+            with self.assertRaisesRegex(RuntimeError, "did not register"):
                 provisioner.provision(self.config)
         self.assertFalse((self.state / "success").exists())
 
-    def test_wrong_git_revision_is_rejected(self):
+    def test_registration_in_wrong_cluster_is_rejected(self):
         with mock.patch.object(provisioner, "STATE", self.state), \
-             mock.patch.object(provisioner, "run", return_value=SimpleNamespace(stdout="wrong\n")):
-            with self.assertRaisesRegex(ValueError, "differs"):
+             mock.patch.object(provisioner, "run", side_effect=self.mock_run), \
+             mock.patch.object(provisioner.urllib.request, "urlopen", side_effect=lambda *a, **k: io.BytesIO(json.dumps({"ContainerInstanceArn": "arn:test", "Cluster": "wrong"}).encode())), \
+             mock.patch.object(provisioner.time, "sleep"):
+            with self.assertRaisesRegex(RuntimeError, "expected ECS cluster"):
                 provisioner.provision(self.config)
         self.assertFalse((self.state / "success").exists())
 

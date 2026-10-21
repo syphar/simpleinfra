@@ -83,23 +83,30 @@ variable "bastion_hostname" {
 }
 
 variable "builder_provisioning" {
-  description = "Enable first-boot local Ansible provisioning. Null leaves existing manual provisioning available."
+  description = "Enable first-boot ECS host provisioning with compressed Ansible role files from this checkout. Null keeps EC2 host provisioning manual."
   type = object({
-    repository_url  = string
-    revision        = string
-    image_version   = string
+    role_files      = map(string)
     ansible_version = optional(string, "2.17.1")
   })
   default = null
 
   validation {
     condition = var.builder_provisioning == null ? true : (
-      startswith(var.builder_provisioning.repository_url, "https://") &&
-      can(regex("^[a-f0-9]{40}$", var.builder_provisioning.revision)) &&
-      can(regex("^([A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|sha256:[a-f0-9]{64})$", var.builder_provisioning.image_version)) &&
+      contains(keys(var.builder_provisioning.role_files), "tasks/main.yml") &&
+      alltrue([for path in keys(var.builder_provisioning.role_files) : !startswith(path, "/") && !contains(split("/", path), "..")]) &&
       can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.builder_provisioning.ansible_version))
     )
-    error_message = "Provisioning requires an HTTPS repository, full lowercase commit SHA, valid image tag/digest, and exact Ansible version."
+    error_message = "Supply relative role file paths including tasks/main.yml and an exact Ansible version."
+  }
+}
+
+variable "builder_image_version" {
+  type        = string
+  default     = "latest"
+  description = "Builder ECR image tag or sha256 digest. Changing it updates ECS tasks, not EC2 hosts."
+  validation {
+    condition     = can(regex("^([A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|sha256:[a-f0-9]{64})$", var.builder_image_version))
+    error_message = "The builder image version must be an image tag or sha256 digest."
   }
 }
 

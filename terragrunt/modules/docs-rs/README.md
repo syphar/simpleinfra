@@ -75,14 +75,14 @@ Migrations run after the web rollout and must be compatible with that version.
 
 ## Background Worker
 
-The builder runs on a dedicated Ubuntu EC2 instance. Terraform provisions the
-host, ECR repository, IAM permissions, and private-address DNS record; the
-[Ansible role](../../../ansible/roles/docs-rs-builder/README.md) installs Docker
-and gVisor and runs the builder container under systemd. Staging uses cloud-init
-and a retrying systemd service to apply the role locally at first boot; no SSH
-provisioning step or custom AMI is needed. Production retains manual provisioning
-until `builder_provisioning` is configured. Application image publishing remains
-a separate operation; no automatic scaling is configured.
+Builders run as ECS daemon tasks on dedicated Ubuntu EC2 hosts, using gVisor
+for sibling crate-build containers. Terraform owns hosts, per-host services,
+task configuration, secret references, and IAM roles. The
+[Ansible role](../../../ansible/roles/docs-rs-builder/README.md) installs Docker,
+gVisor, and the ECS agent. Staging embeds that role into cloud-init and provisions
+new hosts automatically; production remains opt-in. ECS manages image deployment,
+secret injection, and CloudWatch logs. No custom AMI or automatic fleet scaling
+is required.
 
 ## Registry Watcher
 

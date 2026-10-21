@@ -1,3 +1,3 @@
 ---
-# Hosts, infrastructure settings, and per-builder resource limits come from
-# Terraform. Additional manual-maintenance settings can be placed here.
+# Host connections and ECS registration settings come from Terraform.
+# Application settings and build limits belong to the ECS task definition.

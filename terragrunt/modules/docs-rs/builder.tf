@@ -43,12 +43,8 @@ resource "aws_instance" "builder" {
   user_data                   = var.builder_provisioning == null ? null : local.builder_user_data[each.key]
   user_data_replace_on_change = true
 
-  # Ensure the boot service can read configuration and pull its image. IAM
-  # propagation delays are handled by the provisioning service's retries.
-  depends_on = [
-    aws_iam_role_policy_attachment.builder_ecr_pull,
-    aws_iam_role_policy.builder_configuration,
-  ]
+  # Register only after the ECS agent's instance permissions are attached.
+  depends_on = [aws_iam_role_policy_attachment.builder_agent]
 
   metadata_options {
     http_tokens                 = "required"
@@ -72,6 +68,11 @@ resource "aws_instance" "builder" {
   lifecycle {
     # Don't recreate the instance automatically when the AMI changes.
     ignore_changes = [ami]
+
+    precondition {
+      condition     = var.builder_provisioning == null ? true : length(local.builder_user_data[each.key]) <= 16384
+      error_message = "Builder cloud-init exceeds EC2's 16 KiB user data limit."
+    }
   }
 }
 
@@ -98,23 +99,30 @@ module "builder_ecr" {
   name   = "docs-rs-build-server"
 }
 
-resource "aws_iam_role_policy_attachment" "builder_ecr_pull" {
+resource "aws_iam_role_policy_attachment" "builder_agent" {
+  count = var.builder_provisioning == null ? 0 : 1
+
   role       = aws_iam_role.builder.name
-  policy_arn = module.builder_ecr.policy_pull_arn
+  policy_arn = "arn:${data.aws_partition.builder.partition}:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
+# Keep the legacy startup permissions until an account opts into ECS.
+moved {
+  from = aws_iam_role_policy.builder_configuration
+  to   = aws_iam_role_policy.builder_configuration[0]
 }
 
 resource "aws_iam_role_policy" "builder_configuration" {
+  count = var.builder_provisioning == null ? 1 : 0
+
   name = "builder-configuration"
   role = aws_iam_role.builder.name
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
-      Action = ["ssm:GetParameter"]
-      Resource = [
-        aws_ssm_parameter.connection_url.arn,
-        "arn:${data.aws_partition.builder.partition}:ssm:${data.aws_region.builder.region}:${data.aws_caller_identity.current.account_id}:parameter${var.builder_github_token_parameter}",
-      ]
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameter"]
+      Resource = [aws_ssm_parameter.connection_url.arn, local.builder_github_token_arn]
     }]
   })
 }
@@ -139,7 +147,7 @@ data "aws_ami" "ubuntu24" {
   }
 }
 
-// The instance profile the builder will assume when communicating with s3
+// Instance permissions are for the ECS agent. Application access uses task roles.
 
 resource "aws_iam_instance_profile" "builder" {
   name = "builder"
@@ -163,7 +171,7 @@ resource "aws_iam_role" "builder" {
 }
 
 resource "aws_iam_role_policy" "builder_s3" {
-  role = aws_iam_role.builder.name
+  role = var.builder_provisioning == null ? aws_iam_role.builder.name : aws_iam_role.builder_task.name
   name = "builder_s3"
 
   policy = jsonencode({

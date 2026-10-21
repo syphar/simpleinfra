@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Prepare the docs.rs build sandbox before ECS registration
+Requires=docker.service
+PartOf=docker.service
+After=docker.service
+Before=ecs.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/docs-rs-builder-host-checks
+RemainAfterExit=yes
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

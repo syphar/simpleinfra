@@ -2,6 +2,27 @@ module "gh_oidc" {
   source = "../gha-oidc-provider"
 }
 
+resource "aws_iam_role_policy" "builder_ci" {
+  name = "deploy-builders"
+  role = module.web.ci_role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([
+      {
+        # ListServices has no resource-level permissions. Updates below are
+        # restricted to the explicitly configured builder services.
+        Effect   = "Allow"
+        Action   = ["ecs:ListServices"]
+        Resource = "*"
+      },
+      ], length(local.ecs_builders) == 0 ? [] : [{
+        Effect   = "Allow"
+        Action   = ["ecs:UpdateService", "ecs:DescribeServices"]
+        Resource = [for service in aws_ecs_service.builder : service.id]
+    }])
+  })
+}
+
 resource "aws_iam_role_policy_attachment" "builder_ci_push" {
   role       = module.web.ci_role_name
   policy_arn = module.builder_ecr.policy_push_arn

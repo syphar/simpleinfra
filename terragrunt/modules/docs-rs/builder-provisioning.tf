@@ -1,34 +1,24 @@
 locals {
-  builder_image = var.builder_provisioning == null ? null : format(
-    "%s%s%s",
-    module.builder_ecr.url,
-    startswith(var.builder_provisioning.image_version, "sha256:") ? "@" : ":",
-    var.builder_provisioning.image_version,
-  )
-
   builder_user_data = var.builder_provisioning == null ? {} : {
     for name, builder in var.builders : name => "#cloud-config\n${jsonencode({
-      write_files = [
+      write_files = concat([
         {
           path        = "/etc/docs-rs/bootstrap.json"
           permissions = "0600"
           content = jsonencode({
-            repository_url  = var.builder_provisioning.repository_url
-            revision        = var.builder_provisioning.revision
             ansible_version = var.builder_provisioning.ansible_version
+            ecs_cluster     = local.builder_cluster_name
           })
         },
         {
           path        = "/etc/docs-rs/provision-vars.json"
           permissions = "0600"
           content = jsonencode({
-            vars_aws_region             = data.aws_region.builder.region
-            vars_builder_image          = local.builder_image
-            vars_database_parameter     = aws_ssm_parameter.connection_url.name
-            vars_github_token_parameter = var.builder_github_token_parameter
-            vars_s3_bucket              = aws_s3_bucket.storage.id
-            vars_build_cpu_limit        = builder.build_cpu_limit
-            vars_build_memory_limit     = builder.build_memory_limit
+            vars_aws_region     = data.aws_region.builder.region
+            vars_ecs_cluster    = local.builder_cluster_name
+            vars_builder_name   = name
+            vars_prefix_path    = local.builder_prefix_path
+            vars_workspace_path = local.builder_workspace_path
           })
         },
         {
@@ -69,7 +59,12 @@ locals {
             WantedBy=multi-user.target
           UNIT
         },
-      ]
+        ], [for path, content in var.builder_provisioning.role_files : {
+          path        = "/opt/docs-rs-provision/roles/docs-rs-builder/${path}"
+          permissions = "0644"
+          encoding    = "gz+b64"
+          content     = content
+      }])
       # --no-block avoids waiting for a unit ordered after cloud-final itself.
       runcmd = [
         ["systemctl", "daemon-reload"],

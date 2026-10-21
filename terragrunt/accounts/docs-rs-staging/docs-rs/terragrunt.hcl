@@ -1,3 +1,7 @@
+locals {
+  builder_role_dir = "${get_repo_root()}/ansible/roles/docs-rs-builder"
+}
+
 terraform {
   source = "../../../modules//docs-rs"
 }
@@ -28,13 +32,13 @@ inputs = {
   bastion_security_group_id = dependency.vpc.outputs.bastion_security_group_id
   bastion_hostname          = dependency.vpc.outputs.bastion_hostname
   builder_provisioning = {
-    # Public fork commit containing the builder role. Update deliberately when
-    # promoting role changes; move to the upstream URL once merged there.
-    repository_url = "https://github.com/syphar/simpleinfra.git"
-    revision       = "37852f62c569048fcf8e46191c58473167886ae4"
-    # Bootstrap image; pin to a published SHA tag/digest for repeatable rollouts.
-    image_version = "latest"
+    role_files = {
+      for path in fileset(local.builder_role_dir, "**") :
+      path => base64gzip(file("${local.builder_role_dir}/${path}"))
+      if path != "README.md"
+    }
   }
+  builder_image_version = "latest" # Prefer a published SHA tag or digest for repeatable rollouts.
   builders = {
     # Each host: 2 vCPU, 4 GiB RAM. Workspace and Docker data are local to the host.
     builder-1 = { instance_type = "c6a.large" }

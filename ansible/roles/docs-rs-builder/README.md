@@ -1,146 +1,118 @@
-# docs.rs builder
+# docs.rs ECS builder hosts
 
-Configures a stock Ubuntu 24.04 amd64 EC2 instance to run the `build-server`
-Docker image under `builder.service`. No custom AMI is required. The host runs
-Docker and a pinned, checksum-verified gVisor package; only crate build
-containers use `runsc` (systrap), while the trusted builder uses `runc`.
+This role prepares stock Ubuntu 24.04 amd64 EC2 hosts for ECS-managed builders.
+It installs Docker, a checksum-pinned gVisor package, a checksum-pinned ECS-Init
+package, workspace directories, and host isolation checks. It does not launch
+the builder, fetch application secrets, or authenticate to the private ECR repo.
 
-## Automatic first-boot provisioning (staging)
+## Provisioning and deployment
 
-Staging enables `builder_provisioning` in its Terragrunt inputs. After Terraform
-creates a host, cloud-init writes non-secret configuration and enables
-`docs-rs-provision.service`. This service installs Ansible, fetches the builder
-role at the configured full Git commit, and applies it to localhost. It retries
-after 60 seconds on failure, including package/repository/network failures.
+Staging enables `builder_provisioning` in Terragrunt. It compresses the role
+files from this checkout into cloud-init, so first boot uses exactly the role
+reviewed alongside the infrastructure change. No separately published Git commit,
+controller credentials, SSH bootstrap, or custom AMI is required. The payload
+contains code and host settings, never application secret values. Terraform
+checks the EC2 user data limit of 16 KiB.
 
-Terraform supplies the region, ECR repository and selected image version, bucket,
-database parameter name, and per-host build limits. No remote inventory, SSH
-bootstrap, controller-side AWS credentials, or custom AMI is required. This boot
-playbook runs only the builder role; it does not apply the shared `common` role
-or configure infra users. Bastion/EC2 Instance Connect access remains available
-for troubleshooting, as described in the Ansible README.
+Cloud-init queues `docs-rs-provision.service` after cloud-final completes. That
+service installs Ansible and runs this role against localhost. It retries on
+failure every 60 seconds and records success only after the ECS agent registers
+with the expected cluster. On subsequent reboots, the installed services start
+normally without rerunning provisioning.
 
-1. Set `builder_provisioning.repository_url` and `.revision` to a public HTTPS
-   repository and a published full commit SHA containing the role. Staging is
-   pinned to the current role on the public fork; switch to upstream after merge.
-2. Set `builder_provisioning.image_version` to a published builder SHA tag or
-   `sha256:...` digest. Staging initially uses `latest` as an explicit bootstrap
-   choice. Publish the image through docs.rs's Docker pipeline after the ECR
-   repository and CI permissions have been applied. If the image is initially
-   absent, startup fails and provisioning retries until it is available.
-3. Apply the VPC unit to publish its bastion hostname output, then apply the
-   docs.rs unit. New staging builders provision themselves.
-4. Check provisioning and application logs on the host:
+The agent registers a `docsrs-builder` attribute matching the Terraform builder
+key. A host-specific ECS daemon service (`docs-rs-builder-<key>`) runs one builder
+on the matching host. Separate task definitions preserve per-host CPU/memory
+build limits and allow different instance sizes. The existing Fargate services
+continue to run on Fargate; builder services explicitly use EC2 and no ALB.
 
-   ```sh
-   sudo systemctl status docs-rs-provision.service builder.service
-   sudo journalctl -u docs-rs-provision.service -u builder.service -n 100
-   ```
+Apply the VPC unit to publish its bastion hostname output, then apply the docs.rs
+unit. Publish the `build-server` image from docs.rs's Docker pipeline. ECS retries
+startup if the image is not available yet. Production remains opt-in: configure
+`builder_provisioning` there only after reviewing host sizing and deployment.
 
-Provisioning writes `/var/lib/docs-rs-provisioning/success` only after the actual
-builder container starts. The service is skipped on subsequent reboots; the
-installed `builder.service` starts normally. Container startup does not prove
-that a crate build succeeds, so verify a small end-to-end build before promotion.
-Terraform apply completing alone does not signal provisioning readiness.
+Application configuration lives in the ECS task definition. ECS injects the
+database URL and GitHub token from SSM using the execution role, pulls ECR images,
+and sends application logs to `/ecs/docs-rs-builder`. The task role supplies S3
+access. In ECS mode the instance role supplies the agent's permissions, with no direct
+application S3 or SSM permissions. Manual accounts retain their existing instance
+permissions until they opt into ECS. Secret rotation requires replacing the task.
 
-Boot configuration changes trigger EC2 replacement through
-`user_data_replace_on_change`. Enabling this on the existing staging host also
-requires replacement. Its current root volume and workspace caches are deleted
-on termination. Review the plan and avoid replacing a builder with an active
-build. Production stays on manual provisioning unless its `builder_provisioning`
-input is explicitly enabled.
+`builder_image_version` selects a tag or digest; it is separate from host
+provisioning. The docs.rs deploy workflow discovers builder services and forces
+new deployments after release migrations succeed. This picks up updated images
+when the configured version is `latest`. A pinned SHA/digest instead requires
+updating Terraform's selected image version. Neither case requires EC2
+replacement for an application update.
 
-## Manual maintenance or provisioning
+## Host isolation and storage
 
-The output-based wrapper remains available for existing hosts and production:
+The builder is trusted and mounts the host Docker socket. It launches sibling
+crate-build containers with `runsc`; ECS does not manage or account for them.
+Keep these hosts dedicated to builder workloads. No application ports are
+published, and SSH ingress is limited to the bastion.
 
-```sh
-AWS_PROFILE=docs-rs-staging ./apply-docs-rs-builder staging --image-version <published-sha> -u ubuntu
-```
+The host readiness service runs an offline-network gVisor test before ECS agent
+registration. It reinstalls firewall rules at boot to block Docker bridges from
+reaching IMDS and ECS credential/introspection endpoints, including loopback
+traffic after DNAT. The trusted builder uses host networking and the ECS task
+credential proxy. Do not run untrusted sandboxes with host networking or mount
+the Docker socket into them. Docker socket access means the trusted builder is
+not isolated from the host or its agent.
 
-Run it from `ansible/`. It reads the applied `builder_ansible` output and creates
-a temporary inventory; `--print-inventory` prints its non-secret contents without
-running Ansible. Normal options such as `--limit` and `--check` are forwarded.
-The wrapper's full playbook also applies `common`, including infra users; that
-path needs the existing controller-side Ansible credentials. Fresh hosts need
-SSH bootstrap access when using this manual path.
+The persistent host directories are mounted at identical paths in the builder:
 
-For an unchanged image setting, `sudo systemctl restart builder` pulls it again.
-This setup does not drain active builds; update idle builders during initial
-use. A manual configuration change is local to that instance: change the
-Terraform boot configuration as well if replacements should retain the change.
-
-## Runtime configuration
-
-The instance role supplies AWS credentials. At startup a root-owned launcher
-retrieves `/docs-rs/database-url` and `/docs-rs/github-access-token` into
-`/run/docs-rs-builder/secrets.env` (0600), authenticates to ECR, and pulls the image. Secrets are not retrieved by Ansible.
-Docker registry credentials are also kept under `/run`.
-
-The builder mounts the host socket and these host directories at identical
-paths inside its container:
-
-- `/opt/docs-rs/prefix`: temporary files and other builder state.
+- `/opt/docs-rs/prefix`: builder state and temporary files.
 - `/opt/docs-rs/workspace`: Rustwide toolchains, caches, sources, and builds.
 
-They survive container replacement and reboot, but the current Terraform root
-volume is deleted on instance termination. This role no longer allocates a
-50 GiB loopback filesystem. Monitor the shared 64 GiB root disk; larger builds
-will need more storage. Host Docker logs rotate locally; the foreground builder
-output is also captured by systemd's journal.
+They survive task replacement and reboot. The Terraform root volume is deleted
+on instance termination. Monitor the shared 64 GiB default disk; larger builds
+will need more storage. Only the controller container has an ECS memory limit;
+Rustwide applies the separately configured CPU/memory limits to build sandboxes.
 
-The trusted builder uses host networking to access instance credentials with
-IMDSv2 hop limit 1. Before it starts, the launcher installs a DOCKER-USER rule
-blocking Docker bridge containers from reaching IMDS. IPv6 IMDS is disabled in
-Terraform. Do not run crate sandboxes with host networking or mount the Docker
-socket into them. This host is dedicated to trusted builder orchestration and
-its untrusted build sandboxes.
-
-Defaults use one build CPU, a 2 GiB default build memory limit, one target, and a
-database pool of at most 4 connections, sized for staging's 2 vCPU / 4 GiB host.
-AWS SDK retries are set to 10 and build logs are stored on S3 without also
-copying them to stdout. Override settings through role variables or
-`vars_builder_environment`.
-
-Before deploying role changes, publish their commit and update
-`builder_provisioning.revision` to it. The bootstrap intentionally does not
-follow uncommitted edits or a moving branch. In particular, the GitHub secret
-loader and environment defaults require the revised role to be published.
-
-## Verification on EC2
-
-The launcher runs an offline-network gVisor smoke test before consuming the
-queue. After applying the role, check:
-
-```sh
-sudo systemctl status builder
-sudo journalctl -u builder -n 100
-sudo docker info
-sudo iptables -C DOCKER-USER -d 169.254.169.254/32 -j REJECT
-```
-
-Then queue a small test crate in staging and confirm its build status and S3
-artifacts. Reboot and confirm the service returns; reapply Ansible and check
-idempotency. Syntax/template checks alone do not verify a real Rustwide build.
+Daemon deployments stop the previous task before starting its replacement.
+A short-lived initialization container removes leftover `runsc` sandboxes on
+this dedicated host before the next builder reuses the workspace. This interrupts
+in-flight builds; it does not implement graceful draining. Queue recovery and
+end-to-end build behavior must be verified on staging before production use.
 
 ## Adding or resizing builders
 
-Terraform's `builders` map controls each host independently. Its keys are stable
-identities and DNS labels; keep existing keys when changing instance sizes.
-Staging defines `builder-1` and `builder-2`; production retains `builder-1` with
-its existing instance size and disk performance. Both environments share this
-module interface. Each entry accepts `instance_type`, `volume_size` (GiB),
-`volume_iops`, and `volume_throughput` (MiB/s). All builders use the first subnet
-in the shared cluster configuration.
+Add an entry to the `builders` map, configure its EC2 instance and disk settings,
+and set `build_cpu_limit` / `build_memory_limit` for its build capacity. All
+builders use the first shared subnet. Apply Terraform; the new host provisions
+and its matching daemon service starts automatically. No static inventory update
+is required, and no automatic fleet scaling is configured.
 
-With automatic provisioning enabled, adding a builder and applying Terraform
-is sufficient. Configure per-host `build_cpu_limit` and `build_memory_limit`
-alongside instance size in the `builders` map. These settings also appear in the
-manual wrapper's inventory. Ansible group/host vars are only loaded by the manual
-path, so do not rely on them to configure first boot.
-Every host has its own workspace, while the image, instance role, security group,
-and database queue are shared. No automatic scaling is configured.
+Changing boot configuration replaces the EC2 host through
+`user_data_replace_on_change`; local workspace caches are lost. Application image,
+secret, or task environment updates replace tasks, preserving those caches.
+Review replacement plans and do not terminate an active production builder.
 
-Moved blocks map the previous singleton resources to `builder-1`, preserving
-the instance and Elastic IP. The old `builder.<domain>` DNS name is replaced by
-`builder-1.<domain>`; use the new inventory names after applying Terraform.
+For manual host maintenance, run from `ansible/`:
+
+```sh
+AWS_PROFILE=docs-rs-staging ./apply-docs-rs-builder staging --print-inventory
+AWS_PROFILE=docs-rs-staging ./apply-docs-rs-builder staging -u ubuntu
+```
+
+The wrapper reads applied Terraform outputs for cluster, identity, paths, and
+SSH connection settings. It configures only the host, not the application image.
+The role stops and disables any legacy `builder.service` before registering
+with ECS, avoiding two builders on the same workspace. Its full playbook also
+applies the shared `common` role, so this optional manual path still needs the existing controller-side Ansible credentials and SSH access.
+
+## Verification
+
+```sh
+sudo systemctl status docs-rs-provision.service docs-rs-builder-host.service ecs.service
+sudo journalctl -u docs-rs-provision.service -u ecs.service -n 100
+curl http://127.0.0.1:51678/v1/metadata
+sudo docker ps
+```
+
+Verify both hosts register, each daemon service has one running task, task role
+credentials and SSM injection work, and a small crate builds successfully with
+artifacts in S3. Check that a sandbox cannot reach IMDS/ECS credentials. Reboot
+and test an image deployment while observing workspace preservation and cleanup.
+Terraform apply and host registration alone do not prove successful builds.

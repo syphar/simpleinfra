@@ -5,22 +5,37 @@
       - ansible_distribution == 'Ubuntu'
       - ansible_distribution_version == '24.04'
       - ansible_architecture == 'x86_64'
-      - vars_builder_image | length > 0
-      - vars_s3_bucket | length > 0
-    fail_msg: "This role requires Ubuntu 24.04 amd64, an ECR image, and a storage bucket."
+      - vars_ecs_cluster | length > 0
+      - vars_builder_name | length > 0
+    fail_msg: "This role requires Ubuntu 24.04 amd64, an ECS cluster, and a builder identity."
+
+- name: Discover any legacy systemd builder
+  ansible.builtin.service_facts:
+
+- name: Stop and disable the legacy builder before enabling ECS
+  ansible.builtin.systemd:
+    name: builder
+    state: stopped
+    enabled: false
+  when: "'builder.service' in ansible_facts.services"
+
+- name: Remove the legacy application launcher and environment files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/builder.service
+    - /usr/local/sbin/docs-rs-builder
+    - /etc/docs-rs/builder.env
+    - /run/docs-rs-builder
+  notify: restart-ecs
 
 - name: Install host dependencies
   ansible.builtin.apt:
-    name: [ca-certificates, docker.io, iptables, python3-venv]
+    name: [ca-certificates, docker.io, iptables]
     state: present
     update_cache: true
     cache_valid_time: 3600
-
-- name: Install AWS CLI in a dedicated virtual environment
-  ansible.builtin.pip:
-    name: "awscli=={{ vars_awscli_version }}"
-    virtualenv: /opt/docs-rs/awscli
-    virtualenv_command: /usr/bin/python3 -m venv
 
 - name: Download the pinned gVisor package
   ansible.builtin.get_url:
@@ -53,33 +68,52 @@
     state: directory
     mode: '0755'
   loop:
-    - /etc/docs-rs
+    - /etc/ecs
+    - /etc/systemd/system/ecs.service.d
     - "{{ vars_prefix_path }}"
     - "{{ vars_workspace_path }}"
 
-- name: Install builder environment
+- name: Install host isolation checks
   ansible.builtin.template:
-    src: builder.env
-    dest: /etc/docs-rs/builder.env
-    mode: '0600'
-  notify: restart-builder
-
-- name: Install builder launcher
-  ansible.builtin.template:
-    src: builder-launcher
-    dest: /usr/local/sbin/docs-rs-builder
+    src: builder-host-checks
+    dest: /usr/local/sbin/docs-rs-builder-host-checks
     mode: '0755'
-  notify: restart-builder
+  notify: restart-builder-host
 
-- name: Configure systemd service
+- name: Install host readiness service
   ansible.builtin.template:
-    src: builder.service
-    dest: /etc/systemd/system/builder.service
+    src: builder-host.service
+    dest: /etc/systemd/system/docs-rs-builder-host.service
     mode: '0644'
-  notify: restart-builder
+  notify: restart-builder-host
 
-# Apply Docker changes before attempting to launch containers.
-- name: Apply service configuration changes
+- name: Require host checks before registering with ECS
+  ansible.builtin.template:
+    src: ecs-override.conf
+    dest: /etc/systemd/system/ecs.service.d/docs-rs.conf
+    mode: '0644'
+  notify: restart-ecs
+
+- name: Configure the ECS agent
+  ansible.builtin.template:
+    src: ecs.config
+    dest: /etc/ecs/ecs.config
+    mode: '0644'
+  notify: restart-ecs
+
+- name: Download the pinned ECS-Init package
+  ansible.builtin.get_url:
+    url: "https://s3.{{ vars_aws_region }}.amazonaws.com/amazon-ecs-agent-{{ vars_aws_region }}/amazon-ecs-init-{{ vars_ecs_init_version }}.amd64.deb"
+    dest: "/var/cache/amazon-ecs-init-{{ vars_ecs_init_version }}.deb"
+    checksum: "sha256:{{ vars_ecs_init_sha256 }}"
+    mode: '0644'
+
+- name: Install the ECS agent
+  ansible.builtin.apt:
+    deb: "/var/cache/amazon-ecs-init-{{ vars_ecs_init_version }}.deb"
+  notify: restart-ecs
+
+- name: Apply host configuration changes
   ansible.builtin.meta: flush_handlers
 
 - name: Start and enable Docker
@@ -88,9 +122,16 @@
     state: started
     enabled: true
 
-- name: Start and enable builder
+- name: Start and enable host readiness checks
   ansible.builtin.systemd:
-    name: builder
+    name: docs-rs-builder-host
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Start and enable the ECS agent
+  ansible.builtin.systemd:
+    name: ecs
     state: started
     enabled: true
     daemon_reload: true

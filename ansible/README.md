@@ -24,8 +24,8 @@ the extension.
 
 ### docs.rs builders
 
-Use `./apply-docs-rs-builder <staging|prod> --image-version <tag-or-digest>` for
-builders. It reads the applied Terraform outputs and generates a temporary
+Use `./apply-docs-rs-builder <staging|prod>` for manual builder-host maintenance.
+Staging normally provisions its hosts through cloud-init automatically. It reads the applied Terraform outputs and generates a temporary
 inventory, including the host connections and infrastructure configuration.
 It accepts the usual `./apply` options, such as `-u ubuntu` or `--limit`.
 See the [builder role documentation](roles/docs-rs-builder/README.md) for setup.

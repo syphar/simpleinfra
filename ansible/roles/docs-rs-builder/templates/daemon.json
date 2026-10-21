@@ -1,5 +1,6 @@
 {
   "storage-driver": "overlay2",
+  "exec-opts": ["native.cgroupdriver=cgroupfs"],
   "runtimes": {
     "runsc": {
       "path": "/usr/bin/runsc",
