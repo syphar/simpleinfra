@@ -219,3 +219,5 @@ resource "aws_security_group" "builder" {
 }
 
 data "aws_partition" "builder" {}
+
+data "aws_region" "builder" {}

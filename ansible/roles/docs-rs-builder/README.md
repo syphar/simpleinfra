@@ -87,19 +87,6 @@ Changing boot configuration replaces the EC2 host through
 secret, or task environment updates replace tasks, preserving those caches.
 Review replacement plans and do not terminate an active production builder.
 
-For manual host maintenance, run from `ansible/`:
-
-```sh
-AWS_PROFILE=docs-rs-staging ./apply-docs-rs-builder staging --print-inventory
-AWS_PROFILE=docs-rs-staging ./apply-docs-rs-builder staging -u ubuntu
-```
-
-The wrapper reads applied Terraform outputs for cluster, identity, paths, and
-SSH connection settings. It configures only the host, not the application image.
-The role stops and disables any legacy `builder.service` before registering
-with ECS, avoiding two builders on the same workspace. Its full playbook also
-applies the shared `common` role, so this optional manual path still needs the existing controller-side Ansible credentials and SSH access.
-
 ## Verification
 
 ```sh

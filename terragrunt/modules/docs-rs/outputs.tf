@@ -45,22 +45,6 @@ output "builder_repository_url" {
   value = module.builder_ecr.url
 }
 
-# This output contains configuration only, never secret values. The launcher
-# retrieves the database credential on the host through its instance role.
-data "aws_region" "builder" {}
-
-output "builder_ansible" {
-  description = "Non-secret infrastructure inputs for manual ECS builder-host maintenance."
-  value = {
-    hosts            = local.builder_hosts
-    aws_region       = data.aws_region.builder.region
-    bastion_hostname = var.bastion_hostname
-    ecs_cluster      = local.builder_cluster_name
-    prefix_path      = local.builder_prefix_path
-    workspace_path   = local.builder_workspace_path
-  }
-}
-
 output "builder_services" {
   description = "Per-host ECS daemon services for deployment and readiness checks."
   value       = { for name, service in aws_ecs_service.builder : name => service.name }

@@ -30,7 +30,6 @@ inputs = {
   github_environment        = "production"
   domain                    = "docs-rs-prod.rust-lang.net"
   bastion_security_group_id = dependency.vpc.outputs.bastion_security_group_id
-  bastion_hostname          = dependency.vpc.outputs.bastion_hostname
   builder_provisioning = {
     role_files = {
       for path in fileset(local.builder_role_dir, "**") :

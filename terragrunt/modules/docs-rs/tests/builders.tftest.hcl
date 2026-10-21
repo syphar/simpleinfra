@@ -43,7 +43,6 @@ variables {
   domain                    = "docs-rs-staging.rust-lang.net"
   private_subnet_ids        = ["subnet-0123456789abcdef0"]
   bastion_security_group_id = "sg-0123456789abcdef0"
-  bastion_hostname          = "bastion.example.com"
   github_environment        = "staging"
   db_instance_class         = "db.t4g.small"
   cluster_config = {

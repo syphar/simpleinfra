@@ -24,10 +24,7 @@ the extension.
 
 ### docs.rs builders
 
-Use `./apply-docs-rs-builder <staging|prod>` for manual builder-host maintenance.
-Staging normally provisions its hosts through cloud-init automatically. It reads the applied Terraform outputs and generates a temporary
-inventory, including the host connections and infrastructure configuration.
-It accepts the usual `./apply` options, such as `-u ubuntu` or `--limit`.
+Builder hosts are provisioned automatically through cloud-init.
 See the [builder role documentation](roles/docs-rs-builder/README.md) for setup.
 
 The generic `./apply` also accepts `--inventory <path>` to supplement an
