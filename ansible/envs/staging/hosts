@@ -6,7 +6,3 @@ dev-desktop-staging.infra.rust-lang.org
 
 [docs-rs-bastion]
 bastion.docs-rs-staging.rust-lang.net
-
-[docs-rs-builder]
-builder-1.docs-rs-staging.rust-lang.net
-builder-2.docs-rs-staging.rust-lang.net

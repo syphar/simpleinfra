@@ -72,6 +72,8 @@ def run_playbook(args):
             "--extra-vars", f"vars_environment={args.env}",
             str(tempdir / "play" / "playbook.yml"),
         ]
+        if args.inventory is not None:
+            ansible_args += ["-i", str(pathlib.Path(args.inventory).resolve())]
         if args.user is not None:
             ansible_args += ["-u", args.user]
         if args.start_at_task is not None:
@@ -105,6 +107,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("env")
     parser.add_argument("playbook")
+    parser.add_argument(
+        "--inventory", help="Additional generated Ansible inventory file", default=None,
+    )
     parser.add_argument(
         "-u", "--user", help="user to log into instances as", default=None,
     )

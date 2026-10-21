@@ -7,13 +7,15 @@ containers use `runsc` (systrap), while the trusted builder uses `runc`.
 
 ## First deployment
 
-1. Plan and apply `terragrunt/accounts/docs-rs-staging/docs-rs`. This provisions
+1. Apply `terragrunt/accounts/docs-rs-staging/vpc` to publish its bastion hostname
+   output, then plan and apply `terragrunt/accounts/docs-rs-staging/docs-rs`.
+   This provisions
    the builder ECR repository, permissions, and a DNS record pointing to each
    instance's private address (for example,
    `builder-1.docs-rs-staging.rust-lang.net`). It does not run Ansible.
-2. Publish the docs.rs `build-server` image through its Docker pipeline. Use the
-   published SHA tag or digest as `vars_builder_image` in staging's
-   `group_vars/docs-rs-builder.yml`; `latest` is a bootstrap convenience.
+2. Publish the docs.rs `build-server` image through its Docker pipeline. Pass
+   its published SHA tag or `sha256:...` digest to the wrapper below. The image
+   repository URL comes from Terraform; no image version is chosen implicitly.
 3. Ensure your SSH key works on the bastion and target. For a fresh instance,
    temporarily install your key for `ubuntu` using EC2 Instance Connect as
    described in the Ansible README. The instance ID is exposed by Terraform's
@@ -21,7 +23,7 @@ containers use `runsc` (systrap), while the trusted builder uses `runc`.
 4. From the `ansible` directory, run:
 
    ```sh
-   AWS_PROFILE=docs-rs-staging ./apply staging docs-rs-builder -u ubuntu
+   AWS_PROFILE=docs-rs-staging ./apply-docs-rs-builder staging --image-version <published-sha> -u ubuntu
    ```
 
    Use your configured AWS profile name. The common role also needs access to
@@ -30,7 +32,23 @@ containers use `runsc` (systrap), while the trusted builder uses `runc`.
    configures infra users and SSH keys; subsequent runs should use an authorized
    infra user instead of `ubuntu`.
 
-Reapply the playbook after changing the image or configuration. For an explicit
+The wrapper reads the applied `builder_ansible` Terraform output and creates a
+private temporary JSON inventory. Hosts, private IPs, instance IDs, region,
+bastion, bucket, database parameter name, and image repository all come from
+Terraform. It invokes `./apply` with this inventory alongside the existing
+staging inventory and removes the temporary file afterward. It never reads the
+database secret value. Apply Terraform after changing infrastructure so the
+outputs reflect the new resources.
+
+Use `--print-inventory` to inspect the generated configuration without running
+Ansible, or forward normal `./apply` flags such as `--check` and `--limit`:
+
+```sh
+./apply-docs-rs-builder staging --image-version <published-sha> --print-inventory
+./apply-docs-rs-builder staging --image-version <published-sha> --limit builder-2.docs-rs-staging.rust-lang.net
+```
+
+Reapply through the wrapper after changing the image or configuration. For an explicit
 restart with an unchanged image setting, SSH to the host and run
 `sudo systemctl restart builder`. A failed pull or secret lookup prevents startup
 and systemd retries after 30 seconds. This setup does not automatically drain an
@@ -92,10 +110,11 @@ module interface. Each entry accepts `instance_type`, `volume_size` (GiB),
 `volume_iops`, and `volume_throughput` (MiB/s). All builders use the first subnet
 in the shared cluster configuration.
 
-After adding a builder, add `<name>.<environment-domain>` to that environment's
-`docs-rs-builder` Ansible inventory group and apply the role. For a differently
-sized host, set `vars_build_cpu_limit` and `vars_build_memory_limit` in its
-`host_vars` file; do not assume that increasing EC2 size adjusts build limits.
+After adding a builder, apply Terraform and rerun the wrapper; inventory follows
+the Terraform output automatically. Keep operational settings in the environment's
+`group_vars/docs-rs-builder.yml`. For a differently sized host, set
+`vars_build_cpu_limit` and `vars_build_memory_limit` in its `host_vars` file;
+do not assume that increasing EC2 size adjusts build limits.
 Every host has its own workspace, while the image, instance role, security group,
 and database queue are shared. No automatic scaling is configured.
 

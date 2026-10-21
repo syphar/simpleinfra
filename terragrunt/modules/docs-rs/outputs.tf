@@ -23,9 +23,8 @@ output "watcher_service_arn" {
   value       = aws_ecs_service.watcher.id
 }
 
-output "builders" {
-  description = "Builder connection details keyed by stable builder name. SSH uses private addresses through the bastion."
-  value = {
+locals {
+  builder_hosts = {
     for name, instance in aws_instance.builder : name => {
       instance_id   = instance.id
       instance_type = instance.instance_type
@@ -35,6 +34,27 @@ output "builders" {
   }
 }
 
+output "builders" {
+  description = "Builder connection details keyed by stable builder name. SSH uses private addresses through the bastion."
+  value       = local.builder_hosts
+}
+
 output "builder_repository_url" {
   value = module.builder_ecr.url
+}
+
+# This output contains configuration only, never secret values. The launcher
+# retrieves the database credential on the host through its instance role.
+data "aws_region" "builder" {}
+
+output "builder_ansible" {
+  description = "Non-secret infrastructure inputs for the generated builder Ansible inventory."
+  value = {
+    hosts              = local.builder_hosts
+    aws_region         = data.aws_region.builder.region
+    bastion_hostname   = var.bastion_hostname
+    storage_bucket     = aws_s3_bucket.storage.id
+    repository_url     = module.builder_ecr.url
+    database_parameter = aws_ssm_parameter.connection_url.name
+  }
 }

@@ -1,5 +1,5 @@
 ---
-ansible_ssh_common_args: '-o ProxyJump=bastion.docs-rs-staging.rust-lang.net'
-vars_s3_bucket: docs-rs-storage-519825364412
-# Bootstrap tag. Pin to a published commit SHA or digest before applying.
-vars_builder_image: 519825364412.dkr.ecr.us-east-1.amazonaws.com/docs-rs-build-server:latest
+# Infrastructure settings and hosts come from the generated Terraform inventory.
+# Keep operational settings here; individual hosts can override these in host_vars.
+vars_build_cpu_limit: 1
+vars_build_memory_limit: 2147483648

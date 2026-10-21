@@ -74,3 +74,8 @@ variable "db_instance_class" {
   type        = string
   description = "The RDS instance class for the docs-rs database"
 }
+
+variable "bastion_hostname" {
+  type        = string
+  description = "Bastion DNS hostname used by the generated builder Ansible inventory."
+}

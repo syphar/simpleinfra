@@ -27,3 +27,8 @@ output "bastion_security_group_id" {
   value       = module.bastion.security_group_id
   description = "Id of the security group for the bastion instance"
 }
+
+output "bastion_hostname" {
+  description = "Bastion DNS hostname for SSH connections."
+  value       = module.bastion.hostname
+}
