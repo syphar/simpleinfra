@@ -70,10 +70,9 @@ will need more storage. Only the controller container has an ECS memory limit;
 Rustwide applies the separately configured CPU/memory limits to build sandboxes.
 
 Daemon deployments stop the previous task before starting its replacement.
-A short-lived initialization container removes leftover `runsc` sandboxes on
-this dedicated host before the next builder reuses the workspace. This interrupts
-in-flight builds; it does not implement graceful draining. Queue recovery and
-end-to-end build behavior must be verified on staging before production use.
+ECS does not clean up sibling build containers when the builder stops. Queue
+recovery and end-to-end build behavior must be verified on staging before
+production use.
 
 ## Adding or resizing builders
 
@@ -102,5 +101,5 @@ sudo docker ps
 Verify both hosts register, each daemon service has one running task, task role
 credentials and SSM injection work, and a small crate builds successfully with
 artifacts in S3. Check that a sandbox cannot reach IMDS/ECS credentials. Reboot
-and test an image deployment while observing workspace preservation and cleanup.
+and test an image deployment while observing workspace preservation.
 Terraform apply and host registration alone do not prove successful builds.

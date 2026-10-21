@@ -96,10 +96,6 @@ run "ecs_builders" {
     error_message = "ECS must inject the GitHub token."
   }
   assert {
-    condition     = jsondecode(aws_ecs_task_definition.builder["builder-1"].container_definitions)[0].dependsOn[0].containerName == "cleanup-sandboxes" && jsondecode(aws_ecs_task_definition.builder["builder-1"].container_definitions)[0].dependsOn[0].condition == "SUCCESS"
-    error_message = "The builder must wait for orphan sandbox cleanup."
-  }
-  assert {
     condition     = aws_iam_role_policy.builder_s3.role == aws_iam_role.builder_task.name
     error_message = "Application S3 access must belong to the task role."
   }

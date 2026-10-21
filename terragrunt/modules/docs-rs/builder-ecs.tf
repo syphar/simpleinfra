@@ -80,7 +80,6 @@ resource "aws_ecs_task_definition" "builder" {
     memoryReservation = 512
     memory            = 1024
     stopTimeout       = 120
-    dependsOn         = [{ containerName = "cleanup-sandboxes", condition = "SUCCESS" }]
     environment = [for name, value in merge(local.common_environment, {
       DOCSRS_PREFIX                                    = local.builder_prefix_path
       DOCSRS_RUSTWIDE_WORKSPACE                        = local.builder_workspace_path
@@ -111,27 +110,6 @@ resource "aws_ecs_task_definition" "builder" {
         awslogs-group         = aws_cloudwatch_log_group.builder.name
         awslogs-region        = data.aws_region.builder.region
         awslogs-stream-prefix = each.key
-      }
-    }
-    }, {
-    # A stopped builder can leave sibling runsc containers behind because ECS
-    # does not manage them. Remove these before reusing this dedicated host's
-    # workspace. Graceful draining remains a separate application feature.
-    name              = "cleanup-sandboxes"
-    image             = local.builder_image
-    essential         = false
-    cpu               = 64
-    memoryReservation = 64
-    memory            = 128
-    entryPoint        = ["/bin/sh", "-ec"]
-    command           = [file("${path.module}/templates/cleanup-builder-sandboxes.sh")]
-    mountPoints       = [{ sourceVolume = "docker", containerPath = "/var/run/docker.sock", readOnly = false }]
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        awslogs-group         = aws_cloudwatch_log_group.builder.name
-        awslogs-region        = data.aws_region.builder.region
-        awslogs-stream-prefix = "${each.key}-cleanup"
       }
     }
   }])
