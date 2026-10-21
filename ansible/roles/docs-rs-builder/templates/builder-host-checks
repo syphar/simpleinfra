@@ -1,6 +1,0 @@
-#!/bin/bash
-# {{ ansible_managed }}
-set -euo pipefail
-
-# Run before ECS registers this host as eligible for builders.
-docker run --rm --runtime=runsc --network=none public.ecr.aws/docker/library/alpine:3.22 true

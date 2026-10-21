@@ -4,14 +4,6 @@
     name: docker
     state: restarted
     daemon_reload: true
-  notify: restart-builder-host
-
-- name: restart-builder-host
-  ansible.builtin.systemd:
-    name: docs-rs-builder-host
-    state: restarted
-    daemon_reload: true
-  notify: restart-ecs
 
 - name: restart-ecs
   ansible.builtin.systemd:

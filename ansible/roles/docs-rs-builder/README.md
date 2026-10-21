@@ -2,7 +2,7 @@
 
 This role prepares stock Ubuntu 24.04 amd64 EC2 hosts for ECS-managed builders.
 It installs Docker, a checksum-pinned gVisor package, a checksum-pinned ECS-Init
-package, workspace directories, and host readiness checks. It does not launch
+package, workspace directories, and a gVisor smoke test. It does not launch
 the builder, fetch application secrets, or authenticate to the private ECR repo.
 
 ## Provisioning and deployment
@@ -51,8 +51,9 @@ crate-build containers with `runsc`; ECS does not manage or account for them.
 Keep these hosts dedicated to builder workloads. No application ports are
 published, and SSH ingress is limited to the bastion.
 
-The host readiness service runs an offline-network gVisor test before ECS agent
-registration. Crate-build sandboxes run with networking disabled. The trusted
+Ansible runs a container with networking disabled through gVisor after applying
+Docker configuration and before installing the ECS agent. This smoke test runs
+during provisioning, not on subsequent boots. Crate-build sandboxes run with networking disabled. The trusted
 builder uses bridge networking; ECS-Init supplies routing to the ECS task
 credential endpoint. No container ports are published.
 Do not run untrusted sandboxes with host networking or mount
@@ -92,7 +93,7 @@ Review replacement plans and do not terminate an active production builder.
 ```sh
 sudo cloud-init status --long
 sudo tail -n 100 /var/log/cloud-init-output.log
-sudo systemctl status docs-rs-builder-host.service ecs.service
+sudo systemctl status docker.service ecs.service
 sudo journalctl -u ecs.service -n 100
 curl http://127.0.0.1:51678/v1/metadata
 sudo docker ps

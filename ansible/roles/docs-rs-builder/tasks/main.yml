@@ -41,6 +41,27 @@
     mode: '0644'
   notify: restart-docker
 
+- name: Apply Docker configuration before testing gVisor
+  ansible.builtin.meta: flush_handlers
+
+- name: Start and enable Docker
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Verify gVisor can run a container
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --runtime=runsc
+      - --network=none
+      - public.ecr.aws/docker/library/alpine:3.22
+      - "true"
+  changed_when: false
+
 - name: Create persistent builder directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -48,30 +69,8 @@
     mode: '0755'
   loop:
     - /etc/ecs
-    - /etc/systemd/system/ecs.service.d
     - "{{ vars_prefix_path }}"
     - "{{ vars_workspace_path }}"
-
-- name: Install host readiness checks
-  ansible.builtin.template:
-    src: builder-host-checks
-    dest: /usr/local/sbin/docs-rs-builder-host-checks
-    mode: '0755'
-  notify: restart-builder-host
-
-- name: Install host readiness service
-  ansible.builtin.template:
-    src: builder-host.service
-    dest: /etc/systemd/system/docs-rs-builder-host.service
-    mode: '0644'
-  notify: restart-builder-host
-
-- name: Require host checks before registering with ECS
-  ansible.builtin.template:
-    src: ecs-override.conf
-    dest: /etc/systemd/system/ecs.service.d/docs-rs.conf
-    mode: '0644'
-  notify: restart-ecs
 
 - name: Configure the ECS agent
   ansible.builtin.template:
@@ -94,19 +93,6 @@
 
 - name: Apply host configuration changes
   ansible.builtin.meta: flush_handlers
-
-- name: Start and enable Docker
-  ansible.builtin.systemd:
-    name: docker
-    state: started
-    enabled: true
-
-- name: Start and enable host readiness checks
-  ansible.builtin.systemd:
-    name: docs-rs-builder-host
-    state: started
-    enabled: true
-    daemon_reload: true
 
 - name: Start and enable the ECS agent
   ansible.builtin.systemd:
