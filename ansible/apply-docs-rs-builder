@@ -43,6 +43,7 @@ def builder_inventory(config, image_version):
             "vars_aws_region": config["aws_region"],
             "vars_s3_bucket": config["storage_bucket"],
             "vars_database_parameter": config["database_parameter"],
+            "vars_github_token_parameter": config["github_token_parameter"],
             "vars_builder_image": image,
         },
     }}}}

@@ -102,3 +102,14 @@ variable "builder_provisioning" {
     error_message = "Provisioning requires an HTTPS repository, full lowercase commit SHA, valid image tag/digest, and exact Ansible version."
   }
 }
+
+variable "builder_github_token_parameter" {
+  type        = string
+  default     = "/docs-rs/github-access-token"
+  description = "Existing SSM parameter containing the builder's GitHub token; only the name is passed to the host."
+
+  validation {
+    condition     = startswith(var.builder_github_token_parameter, "/")
+    error_message = "The GitHub token parameter must be an absolute SSM parameter path."
+  }
+}

@@ -52,11 +52,12 @@ data "aws_region" "builder" {}
 output "builder_ansible" {
   description = "Non-secret infrastructure inputs for the generated builder Ansible inventory."
   value = {
-    hosts              = local.builder_hosts
-    aws_region         = data.aws_region.builder.region
-    bastion_hostname   = var.bastion_hostname
-    storage_bucket     = aws_s3_bucket.storage.id
-    repository_url     = module.builder_ecr.url
-    database_parameter = aws_ssm_parameter.connection_url.name
+    hosts                  = local.builder_hosts
+    aws_region             = data.aws_region.builder.region
+    bastion_hostname       = var.bastion_hostname
+    storage_bucket         = aws_s3_bucket.storage.id
+    repository_url         = module.builder_ecr.url
+    database_parameter     = aws_ssm_parameter.connection_url.name
+    github_token_parameter = var.builder_github_token_parameter
   }
 }

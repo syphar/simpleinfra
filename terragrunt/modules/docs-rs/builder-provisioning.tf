@@ -22,12 +22,13 @@ locals {
           path        = "/etc/docs-rs/provision-vars.json"
           permissions = "0600"
           content = jsonencode({
-            vars_aws_region         = data.aws_region.builder.region
-            vars_builder_image      = local.builder_image
-            vars_database_parameter = aws_ssm_parameter.connection_url.name
-            vars_s3_bucket          = aws_s3_bucket.storage.id
-            vars_build_cpu_limit    = builder.build_cpu_limit
-            vars_build_memory_limit = builder.build_memory_limit
+            vars_aws_region             = data.aws_region.builder.region
+            vars_builder_image          = local.builder_image
+            vars_database_parameter     = aws_ssm_parameter.connection_url.name
+            vars_github_token_parameter = var.builder_github_token_parameter
+            vars_s3_bucket              = aws_s3_bucket.storage.id
+            vars_build_cpu_limit        = builder.build_cpu_limit
+            vars_build_memory_limit     = builder.build_memory_limit
           })
         },
         {

@@ -109,9 +109,12 @@ resource "aws_iam_role_policy" "builder_configuration" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["ssm:GetParameter"]
-      Resource = aws_ssm_parameter.connection_url.arn
+      Effect = "Allow"
+      Action = ["ssm:GetParameter"]
+      Resource = [
+        aws_ssm_parameter.connection_url.arn,
+        "arn:${data.aws_partition.builder.partition}:ssm:${data.aws_region.builder.region}:${data.aws_caller_identity.current.account_id}:parameter${var.builder_github_token_parameter}",
+      ]
     }]
   })
 }
@@ -224,3 +227,5 @@ resource "aws_security_group" "builder" {
     Name = "docs-rs-builder"
   }
 }
+
+data "aws_partition" "builder" {}

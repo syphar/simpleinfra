@@ -19,6 +19,7 @@ class BuilderInventoryTest(unittest.TestCase):
             "bastion_hostname": "bastion.example.com.",
             "storage_bucket": "terraform-bucket",
             "database_parameter": "/test/database-url",
+            "github_token_parameter": "/test/github-token",
             "hosts": {
                 name: {
                     "hostname": f"{name}.example.com.",
@@ -39,6 +40,7 @@ class BuilderInventoryTest(unittest.TestCase):
         self.assertEqual(group["vars"]["vars_builder_image"], "registry.example.com/builders:commit-sha")
         self.assertEqual(group["vars"]["vars_s3_bucket"], "terraform-bucket")
         self.assertEqual(group["vars"]["vars_database_parameter"], "/test/database-url")
+        self.assertEqual(group["vars"]["vars_github_token_parameter"], "/test/github-token")
         self.assertEqual(group["vars"]["ansible_ssh_common_args"], "-o ProxyJump=bastion.example.com")
 
     def test_inventory_tracks_added_and_removed_builders(self):

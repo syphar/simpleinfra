@@ -17,10 +17,14 @@ case "${1:-}" in
 
     # Retrieve secrets on the host, never in Ansible output or the baked image.
     umask 077
-    secret_file=/run/docs-rs-builder/database.env
+    secret_file=/run/docs-rs-builder/secrets.env
     printf 'DOCSRS_DATABASE_URL=' > "$secret_file"
     /opt/docs-rs/awscli/bin/aws ssm get-parameter \
       --name {{ vars_database_parameter | quote }} --with-decryption \
+      --query Parameter.Value --output text >> "$secret_file"
+    printf 'DOCSRS_GITHUB_ACCESSTOKEN=' >> "$secret_file"
+    /opt/docs-rs/awscli/bin/aws ssm get-parameter \
+      --name {{ vars_github_token_parameter | quote }} --with-decryption \
       --query Parameter.Value --output text >> "$secret_file"
 
     /opt/docs-rs/awscli/bin/aws ecr get-login-password | \
@@ -38,7 +42,7 @@ case "${1:-}" in
     exec docker run --rm --name docs-rs-builder --init \
       --runtime=runc --network=host \
       --env-file /etc/docs-rs/builder.env \
-      --env-file /run/docs-rs-builder/database.env \
+      --env-file /run/docs-rs-builder/secrets.env \
       --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
       --mount type=bind,src={{ vars_prefix_path }},dst={{ vars_prefix_path }} \
       --mount type=bind,src={{ vars_workspace_path }},dst={{ vars_workspace_path }} \

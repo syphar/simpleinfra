@@ -3,6 +3,7 @@ vars_aws_region: us-east-1
 # Set the full ECR image reference in inventory. Prefer an immutable SHA or digest.
 vars_builder_image: ""
 vars_database_parameter: /docs-rs/database-url
+vars_github_token_parameter: /docs-rs/github-access-token
 vars_s3_bucket: ""
 vars_prefix_path: /opt/docs-rs/prefix
 vars_workspace_path: /opt/docs-rs/workspace

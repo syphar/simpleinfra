@@ -73,8 +73,8 @@ Terraform boot configuration as well if replacements should retain the change.
 ## Runtime configuration
 
 The instance role supplies AWS credentials. At startup a root-owned launcher
-retrieves `/docs-rs/database-url` into `/run/docs-rs-builder/database.env` (0600),
-authenticates to ECR, and pulls the image. Secrets are not retrieved by Ansible.
+retrieves `/docs-rs/database-url` and `/docs-rs/github-access-token` into
+`/run/docs-rs-builder/secrets.env` (0600), authenticates to ECR, and pulls the image. Secrets are not retrieved by Ansible.
 Docker registry credentials are also kept under `/run`.
 
 The builder mounts the host socket and these host directories at identical
@@ -97,8 +97,15 @@ socket into them. This host is dedicated to trusted builder orchestration and
 its untrusted build sandboxes.
 
 Defaults use one build CPU, a 2 GiB default build memory limit, one target, and a
-database pool of at most 10 connections, sized for staging's 2 vCPU / 4 GiB host.
-Override settings through role variables or `vars_builder_environment`.
+database pool of at most 4 connections, sized for staging's 2 vCPU / 4 GiB host.
+AWS SDK retries are set to 10 and build logs are stored on S3 without also
+copying them to stdout. Override settings through role variables or
+`vars_builder_environment`.
+
+Before deploying role changes, publish their commit and update
+`builder_provisioning.revision` to it. The bootstrap intentionally does not
+follow uncommitted edits or a moving branch. In particular, the GitHub secret
+loader and environment defaults require the revised role to be published.
 
 ## Verification on EC2
 
