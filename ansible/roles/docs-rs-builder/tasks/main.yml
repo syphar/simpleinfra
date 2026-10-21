@@ -79,6 +79,15 @@
     mode: '0644'
   notify: restart-ecs
 
+# Provisioning runs inside cloud-final. Own the unit ordering so starting ECS
+# cannot wait for cloud-final to finish while Ansible waits for registration.
+- name: Install the ECS service without a cloud-final dependency
+  ansible.builtin.template:
+    src: ecs.service
+    dest: /etc/systemd/system/ecs.service
+    mode: '0644'
+  notify: restart-ecs
+
 - name: Download the pinned ECS-Init package
   ansible.builtin.get_url:
     url: "https://s3.{{ vars_aws_region }}.amazonaws.com/amazon-ecs-agent-{{ vars_aws_region }}/amazon-ecs-init-{{ vars_ecs_init_version }}.amd64.deb"
@@ -89,6 +98,7 @@
 - name: Install the ECS agent
   ansible.builtin.apt:
     deb: "/var/cache/amazon-ecs-init-{{ vars_ecs_init_version }}.deb"
+    policy_rc_d: 101
   notify: restart-ecs
 
 - name: Apply host configuration changes

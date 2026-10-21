@@ -96,7 +96,7 @@ resource "aws_ecs_task_definition" "builder" {
       DOCSRS_BUILD_CPU_LIMIT                           = tostring(each.value.build_cpu_limit)
       DOCSRS_BUILD_DEFAULT_MEMORY_LIMIT                = each.value.build_memory_limit
       DOCSRS_BUILD_WORKSPACE_REINITIALIZATION_INTERVAL = "2h"
-    }) : { name = name, value = value }]
+    }) : { name = name, value = tostring(value) }]
 
     secrets = [for name, arn in merge(local.common_computed_secrets, {
       DOCSRS_GITHUB_ACCESSTOKEN = local.github_token_arn

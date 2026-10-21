@@ -17,6 +17,8 @@ checks the EC2 user data limit of 16 KiB.
 Cloud-init's native Ansible module installs Ubuntu's `ansible-core` package and
 runs the embedded playbook locally. The role waits for the ECS agent to register
 with the expected cluster, retrying the registration check for about five minutes.
+The role manages the ECS systemd unit without a `cloud-final.service` dependency,
+so startup and registration can complete while cloud-init runs Ansible.
 Provisioning runs once per instance; subsequent boots start the installed services.
 A failed bootstrap is reported by cloud-init and requires investigation or instance
 replacement rather than an automatic retry of the entire playbook.
