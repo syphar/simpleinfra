@@ -1,4 +1,8 @@
 locals {
+  # Existing token shared by the registry watcher and builders.
+  github_token_parameter = "/docs-rs/github-access-token"
+  github_token_arn       = "arn:${data.aws_partition.builder.partition}:ssm:${data.aws_region.builder.region}:${data.aws_caller_identity.current.account_id}:parameter${local.github_token_parameter}"
+
   # Shared defaults for docs.rs containers. Tasks can merge in their own
   # environment settings or override these defaults as needed.
   common_environment = {

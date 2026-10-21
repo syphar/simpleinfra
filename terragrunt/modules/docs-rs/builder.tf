@@ -122,7 +122,7 @@ resource "aws_iam_role_policy" "builder_configuration" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["ssm:GetParameter"]
-      Resource = [aws_ssm_parameter.connection_url.arn, local.builder_github_token_arn]
+      Resource = [aws_ssm_parameter.connection_url.arn, local.github_token_arn]
     }]
   })
 }

@@ -109,14 +109,3 @@ variable "builder_image_version" {
     error_message = "The builder image version must be an image tag or sha256 digest."
   }
 }
-
-variable "builder_github_token_parameter" {
-  type        = string
-  default     = "/docs-rs/github-access-token"
-  description = "Existing SSM parameter containing the builder's GitHub token; only the name is passed to the host."
-
-  validation {
-    condition     = startswith(var.builder_github_token_parameter, "/")
-    error_message = "The GitHub token parameter must be an absolute SSM parameter path."
-  }
-}

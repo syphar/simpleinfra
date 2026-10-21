@@ -1,8 +1,7 @@
 locals {
-  builder_cluster_name     = element(reverse(split("/", var.cluster_config.cluster_id)), 0)
-  builder_prefix_path      = "/opt/docs-rs/prefix"
-  builder_workspace_path   = "/opt/docs-rs/workspace"
-  builder_github_token_arn = "arn:${data.aws_partition.builder.partition}:ssm:${data.aws_region.builder.region}:${data.aws_caller_identity.current.account_id}:parameter${var.builder_github_token_parameter}"
+  builder_cluster_name   = element(reverse(split("/", var.cluster_config.cluster_id)), 0)
+  builder_prefix_path    = "/opt/docs-rs/prefix"
+  builder_workspace_path = "/opt/docs-rs/workspace"
   builder_image = format(
     "%s%s%s", module.builder_ecr.url,
     startswith(var.builder_image_version, "sha256:") ? "@" : ":", var.builder_image_version,
@@ -52,7 +51,7 @@ resource "aws_iam_role_policy" "builder_execution" {
       {
         Effect   = "Allow"
         Action   = ["ssm:GetParameters"]
-        Resource = [aws_ssm_parameter.connection_url.arn, local.builder_github_token_arn]
+        Resource = [aws_ssm_parameter.connection_url.arn, local.github_token_arn]
       },
       {
         Effect   = "Allow"
@@ -101,7 +100,7 @@ resource "aws_ecs_task_definition" "builder" {
       DOCSRS_BUILD_WORKSPACE_REINITIALIZATION_INTERVAL = "2h"
     }) : { name = name, value = value }]
     secrets = [for name, arn in merge(local.common_computed_secrets, {
-      DOCSRS_GITHUB_ACCESSTOKEN = local.builder_github_token_arn
+      DOCSRS_GITHUB_ACCESSTOKEN = local.github_token_arn
     }) : { name = name, valueFrom = arn }]
     mountPoints = [
       { sourceVolume = "docker", containerPath = "/var/run/docker.sock", readOnly = false },

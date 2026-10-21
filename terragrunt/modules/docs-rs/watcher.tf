@@ -18,7 +18,7 @@ module "watcher" {
   computed_secrets = local.common_computed_secrets
 
   secrets = {
-    DOCSRS_GITHUB_ACCESSTOKEN = "/docs-rs/github-access-token"
+    DOCSRS_GITHUB_ACCESSTOKEN = local.github_token_parameter
   }
 }
 
