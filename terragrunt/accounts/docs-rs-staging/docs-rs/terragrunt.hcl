@@ -40,8 +40,8 @@ inputs = {
   builder_image_version = "latest" # Prefer a published SHA tag or digest for repeatable rollouts.
   builder_count = 2
   builder_config = {
-    # Each host: 4 vCPU, 16 GiB RAM, leaving headroom above the 6 GiB build limit.
-    instance_type      = "m6a.xlarge"
+    # Each host: 4 vCPU, 8 GiB RAM, with a 6 GiB build limit.
+    instance_type      = "c8i.xlarge"
     build_cpu_limit    = 3
     build_memory_limit = 6442450944 # 6 GiB per crate-build container.
   }

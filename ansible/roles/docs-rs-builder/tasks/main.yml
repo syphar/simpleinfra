@@ -11,7 +11,7 @@
 
 - name: Install host dependencies
   ansible.builtin.apt:
-    name: [ca-certificates, docker.io, iptables]
+    name: [ca-certificates, docker.io]
     state: present
     update_cache: true
     cache_valid_time: 3600
