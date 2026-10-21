@@ -9,27 +9,6 @@
       - vars_builder_name | length > 0
     fail_msg: "This role requires Ubuntu 24.04 amd64, an ECS cluster, and a builder identity."
 
-- name: Discover any legacy systemd builder
-  ansible.builtin.service_facts:
-
-- name: Stop and disable the legacy builder before enabling ECS
-  ansible.builtin.systemd:
-    name: builder
-    state: stopped
-    enabled: false
-  when: "'builder.service' in ansible_facts.services"
-
-- name: Remove the legacy application launcher and environment files
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /etc/systemd/system/builder.service
-    - /usr/local/sbin/docs-rs-builder
-    - /etc/docs-rs/builder.env
-    - /run/docs-rs-builder
-  notify: restart-ecs
-
 - name: Install host dependencies
   ansible.builtin.apt:
     name: [ca-certificates, docker.io, iptables]
