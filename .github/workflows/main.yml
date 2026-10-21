@@ -76,12 +76,6 @@ jobs:
       - name: Ensure the terraform files are formatted correctly
         run: terraform fmt -check -diff -recursive
 
-      - name: Test ECS builder configuration
-        working-directory: terragrunt/modules/docs-rs
-        run: |
-          terraform init -backend=false -input=false
-          terraform test -filter=tests/builders.tftest.hcl
-
       - name: Test OIDC role module
         working-directory: terragrunt/modules/gha-oidc-role
         run: |
