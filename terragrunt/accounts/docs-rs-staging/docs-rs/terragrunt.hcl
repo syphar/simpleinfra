@@ -26,6 +26,10 @@ inputs = {
   github_environment        = "staging"
   domain                    = "docs-rs-staging.rust-lang.net"
   bastion_security_group_id = dependency.vpc.outputs.bastion_security_group_id
-  builder_instance_type     = "c6a.large" # 2 vCPU. 4 GiB RAM.
-  db_instance_class         = "db.t4g.small" # 2 vCPUs. 2 GiB RAM.
+  builders = {
+    # Each host: 2 vCPU, 4 GiB RAM. Workspace and Docker data are local to the host.
+    builder-1 = { instance_type = "c6a.large" }
+    builder-2 = { instance_type = "c6a.large" }
+  }
+  db_instance_class = "db.t4g.small" # 2 vCPUs. 2 GiB RAM.
 }

@@ -8,15 +8,16 @@ containers use `runsc` (systrap), while the trusted builder uses `runc`.
 ## First deployment
 
 1. Plan and apply `terragrunt/accounts/docs-rs-staging/docs-rs`. This provisions
-   the builder ECR repository, permissions, and `builder.docs-rs-staging.rust-lang.net`
-   DNS record pointing to the instance's private address. It does not run Ansible.
+   the builder ECR repository, permissions, and a DNS record pointing to each
+   instance's private address (for example,
+   `builder-1.docs-rs-staging.rust-lang.net`). It does not run Ansible.
 2. Publish the docs.rs `build-server` image through its Docker pipeline. Use the
    published SHA tag or digest as `vars_builder_image` in staging's
    `group_vars/docs-rs-builder.yml`; `latest` is a bootstrap convenience.
 3. Ensure your SSH key works on the bastion and target. For a fresh instance,
    temporarily install your key for `ubuntu` using EC2 Instance Connect as
    described in the Ansible README. The instance ID is exposed by Terraform's
-   `builder_instance_id` output. Inventory uses ProxyJump through the bastion.
+   `builders` output map. Inventory uses ProxyJump through the bastion.
 4. From the `ansible` directory, run:
 
    ```sh
@@ -80,3 +81,24 @@ sudo iptables -C DOCKER-USER -d 169.254.169.254/32 -j REJECT
 Then queue a small test crate in staging and confirm its build status and S3
 artifacts. Reboot and confirm the service returns; reapply Ansible and check
 idempotency. Syntax/template checks alone do not verify a real Rustwide build.
+
+## Adding or resizing builders
+
+Terraform's `builders` map controls each host independently. Its keys are stable
+identities and DNS labels; keep existing keys when changing instance sizes.
+Staging defines `builder-1` and `builder-2`; production retains `builder-1` with
+its existing instance size and disk performance. Both environments share this
+module interface. Each entry accepts `instance_type`, `volume_size` (GiB),
+`volume_iops`, and `volume_throughput` (MiB/s). All builders use the first subnet
+in the shared cluster configuration.
+
+After adding a builder, add `<name>.<environment-domain>` to that environment's
+`docs-rs-builder` Ansible inventory group and apply the role. For a differently
+sized host, set `vars_build_cpu_limit` and `vars_build_memory_limit` in its
+`host_vars` file; do not assume that increasing EC2 size adjusts build limits.
+Every host has its own workspace, while the image, instance role, security group,
+and database queue are shared. No automatic scaling is configured.
+
+Moved blocks map the previous singleton resources to `builder-1`, preserving
+the instance and Elastic IP. The old `builder.<domain>` DNS name is replaced by
+`builder-1.<domain>`; use the new inventory names after applying Terraform.

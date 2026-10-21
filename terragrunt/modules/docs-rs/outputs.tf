@@ -23,12 +23,16 @@ output "watcher_service_arn" {
   value       = aws_ecs_service.watcher.id
 }
 
-output "builder_instance_id" {
-  value = aws_instance.builder.id
-}
-
-output "builder_hostname" {
-  value = aws_route53_record.builder.fqdn
+output "builders" {
+  description = "Builder connection details keyed by stable builder name. SSH uses private addresses through the bastion."
+  value = {
+    for name, instance in aws_instance.builder : name => {
+      instance_id   = instance.id
+      instance_type = instance.instance_type
+      private_ip    = instance.private_ip
+      hostname      = aws_route53_record.builder[name].fqdn
+    }
+  }
 }
 
 output "builder_repository_url" {

@@ -30,21 +30,20 @@ variable "cluster_config" {
   description = "The configuration for the cluster this is running in"
 }
 
-variable "builder_instance_type" {
-  type        = string
-  description = "The EC2 instance type for the docs-rs builder"
-}
+variable "builders" {
+  description = "Named amd64 builders. Keys are stable identities and DNS labels; settings can vary per host."
+  type = map(object({
+    instance_type     = string
+    volume_size       = optional(number, 64)
+    volume_iops       = optional(number, 3000)
+    volume_throughput = optional(number, 125)
+  }))
 
-variable "builder_volume_iops" {
-  type        = number
-  description = "The provisioned IOPS for the docs-rs builder gp3 root volume."
-  default     = 3000
-}
+  validation {
+    condition     = alltrue([for name in keys(var.builders) : can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", name))])
+    error_message = "Builder names must be valid lowercase DNS labels of at most 63 characters."
+  }
 
-variable "builder_volume_throughput" {
-  type        = number
-  description = "The provisioned throughput in MiB/s for the docs-rs builder gp3 root volume."
-  default     = 125
 }
 
 variable "github_environment" {

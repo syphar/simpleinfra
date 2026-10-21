@@ -1,15 +1,41 @@
+# Preserve the existing builder and its public IP when adopting named builders.
+# Keep builder-1 in accounts that already have the singleton in state.
+moved {
+  from = aws_instance.builder
+  to   = aws_instance.builder["builder-1"]
+}
+
+moved {
+  from = aws_eip.builder
+  to   = aws_eip.builder["builder-1"]
+}
+
+moved {
+  from = aws_eip_association.builder
+  to   = aws_eip_association.builder["builder-1"]
+}
+
+moved {
+  from = aws_route53_record.builder
+  to   = aws_route53_record.builder["builder-1"]
+}
+
 resource "aws_eip" "builder" {
+  for_each = var.builders
+
   domain = "vpc"
 
   tags = {
-    Name = "docs-rs-builder"
+    Name = "docs-rs-${each.key}"
   }
 }
 
 resource "aws_instance" "builder" {
+  for_each = var.builders
+
   ami                         = data.aws_ami.ubuntu24.id
-  instance_type               = var.builder_instance_type
-  subnet_id                   = element(var.cluster_config.subnet_ids, 0)
+  instance_type               = each.value.instance_type
+  subnet_id                   = var.cluster_config.subnet_ids[0]
   vpc_security_group_ids      = [aws_security_group.builder.id]
   iam_instance_profile        = aws_iam_instance_profile.builder.name
   associate_public_ip_address = true
@@ -22,15 +48,15 @@ resource "aws_instance" "builder" {
 
   root_block_device {
     # Size of the volume in GiB.
-    volume_size           = 64
+    volume_size           = each.value.volume_size
     volume_type           = "gp3"
-    iops                  = var.builder_volume_iops
-    throughput            = var.builder_volume_throughput
+    iops                  = each.value.volume_iops
+    throughput            = each.value.volume_throughput
     delete_on_termination = true
   }
 
   tags = {
-    Name = "docs-rs-builder"
+    Name = "docs-rs-${each.key}"
   }
 
   lifecycle {
@@ -40,17 +66,21 @@ resource "aws_instance" "builder" {
 }
 
 resource "aws_eip_association" "builder" {
-  instance_id   = aws_instance.builder.id
-  allocation_id = aws_eip.builder.id
+  for_each = var.builders
+
+  instance_id   = aws_instance.builder[each.key].id
+  allocation_id = aws_eip.builder[each.key].id
 }
 
 # SSH through the bastion to this private address.
 resource "aws_route53_record" "builder" {
+  for_each = var.builders
+
   zone_id = var.zone_id
-  name    = "builder.${var.domain}"
+  name    = "${each.key}.${var.domain}"
   type    = "A"
   ttl     = 300
-  records = [aws_instance.builder.private_ip]
+  records = [aws_instance.builder[each.key].private_ip]
 }
 
 module "builder_ecr" {
