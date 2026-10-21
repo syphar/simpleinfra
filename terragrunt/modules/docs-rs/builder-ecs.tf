@@ -61,7 +61,7 @@ resource "aws_iam_role_policy" "builder_execution" {
 }
 
 resource "aws_ecs_task_definition" "builder" {
-  for_each = var.builders
+  for_each = local.builders
 
   family                   = "docs-rs-builder-${each.key}"
   requires_compatibilities = ["EC2"]
@@ -134,7 +134,7 @@ resource "aws_ecs_task_definition" "builder" {
 # A host-specific daemon service preserves different build limits and gives
 # exactly one ECS-managed builder on each matching named EC2 host.
 resource "aws_ecs_service" "builder" {
-  for_each = var.builders
+  for_each = local.builders
 
   name                = "docs-rs-builder-${each.key}"
   cluster             = var.cluster_config.cluster_id

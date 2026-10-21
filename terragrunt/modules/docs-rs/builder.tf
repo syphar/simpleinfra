@@ -1,3 +1,9 @@
+locals {
+  builders = {
+    for index in range(var.builder_count) : "builder-${index + 1}" => var.builder_config
+  }
+}
+
 # Preserve the existing builder and its public IP when adopting named builders.
 # Keep builder-1 in accounts that already have the singleton in state.
 moved {
@@ -21,7 +27,7 @@ moved {
 }
 
 resource "aws_eip" "builder" {
-  for_each = var.builders
+  for_each = local.builders
 
   domain = "vpc"
 
@@ -31,7 +37,7 @@ resource "aws_eip" "builder" {
 }
 
 resource "aws_instance" "builder" {
-  for_each = var.builders
+  for_each = local.builders
 
   ami                         = data.aws_ami.ubuntu24.id
   instance_type               = each.value.instance_type
@@ -77,7 +83,7 @@ resource "aws_instance" "builder" {
 }
 
 resource "aws_eip_association" "builder" {
-  for_each = var.builders
+  for_each = local.builders
 
   instance_id   = aws_instance.builder[each.key].id
   allocation_id = aws_eip.builder[each.key].id
@@ -85,7 +91,7 @@ resource "aws_eip_association" "builder" {
 
 # SSH through the bastion to this private address.
 resource "aws_route53_record" "builder" {
-  for_each = var.builders
+  for_each = local.builders
 
   zone_id = var.zone_id
   name    = "${each.key}.${var.domain}"

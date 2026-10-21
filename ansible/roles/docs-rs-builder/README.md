@@ -23,8 +23,8 @@ replacement rather than an automatic retry of the entire playbook.
 
 The agent registers a `docsrs-builder` attribute matching the Terraform builder
 key. A host-specific ECS daemon service (`docs-rs-builder-<key>`) runs one builder
-on the matching host. Separate task definitions preserve per-host CPU/memory
-build limits and allow different instance sizes. The existing Fargate services
+on the matching host. Each host uses the shared instance configuration and CPU/memory
+build limits. The existing Fargate services
 continue to run on Fargate; builder services explicitly use EC2 and no ALB.
 
 Apply the docs.rs unit. Publish the `build-server` image from docs.rs's Docker
@@ -77,11 +77,12 @@ production use.
 
 ## Adding or resizing builders
 
-Add an entry to the `builders` map, configure its EC2 instance and disk settings,
-and set `build_cpu_limit` / `build_memory_limit` for its build capacity. All
-builders use the first shared subnet. Apply Terraform; the new host provisions
-and its matching daemon service starts automatically. No static inventory update
-is required, and no automatic fleet scaling is configured.
+Set `builder_count` to the desired number of identical hosts. `builder_config`
+sets their shared EC2 instance type, EBS settings, and build CPU/memory limits.
+Hosts have stable names (`builder-1`, `builder-2`, and so on); reducing the count
+removes the highest-numbered hosts. All builders use the first shared subnet.
+Apply Terraform; new hosts provision and their daemon services start automatically.
+No static inventory update or automatic fleet scaling is required.
 
 Changing boot configuration replaces the EC2 host through
 `user_data_replace_on_change`; local workspace caches are lost. Application image,

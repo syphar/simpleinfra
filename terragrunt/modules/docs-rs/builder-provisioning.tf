@@ -1,6 +1,6 @@
 locals {
   builder_user_data = {
-    for name, builder in var.builders : name => "#cloud-config\n${jsonencode({
+    for name, builder in local.builders : name => "#cloud-config\n${jsonencode({
       write_files = concat([
         {
           path        = "/etc/docs-rs/provision-vars.json"

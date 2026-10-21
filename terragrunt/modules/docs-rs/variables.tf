@@ -30,22 +30,28 @@ variable "cluster_config" {
   description = "The configuration for the cluster this is running in"
 }
 
-variable "builders" {
-  description = "Named amd64 builders. Keys are stable identities and DNS labels; settings can vary per host."
-  type = map(object({
+variable "builder_count" {
+  description = "Number of identical builder hosts, named builder-1, builder-2, and so on."
+  type        = number
+  nullable    = false
+
+  validation {
+    condition     = var.builder_count >= 0 && floor(var.builder_count) == var.builder_count
+    error_message = "Builder count must be a non-negative integer."
+  }
+}
+
+variable "builder_config" {
+  description = "Shared amd64 EC2, EBS, and build limits for every builder host."
+  type = object({
     instance_type      = string
     volume_size        = optional(number, 64)
     volume_iops        = optional(number, 3000)
     volume_throughput  = optional(number, 125)
     build_cpu_limit    = optional(number, 1)
     build_memory_limit = optional(number, 2147483648)
-  }))
-
-  validation {
-    condition     = alltrue([for name in keys(var.builders) : can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", name))])
-    error_message = "Builder names must be valid lowercase DNS labels of at most 63 characters."
-  }
-
+  })
+  nullable = false
 }
 
 variable "github_environment" {

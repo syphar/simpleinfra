@@ -38,10 +38,10 @@ inputs = {
     }
   }
   builder_image_version = "latest" # Prefer a published SHA tag or digest for repeatable rollouts.
-  builders = {
+  builder_count = 2
+  builder_config = {
     # Each host: 2 vCPU, 4 GiB RAM. Workspace and Docker data are local to the host.
-    builder-1 = { instance_type = "c6a.large" }
-    builder-2 = { instance_type = "c6a.large" }
+    instance_type = "c6a.large"
   }
   db_instance_class = "db.t4g.small" # 2 vCPUs. 2 GiB RAM.
 }

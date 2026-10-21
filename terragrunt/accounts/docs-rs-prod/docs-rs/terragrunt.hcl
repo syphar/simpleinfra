@@ -37,14 +37,13 @@ inputs = {
       if path != "README.md"
     }
   }
-  builders = {
+  builder_count = 1
+  builder_config = {
     # Production builder size and disk performance.
-    builder-1 = {
-      # FIXME: check with current prod? or decide new instance with many-builders?
-      instance_type     = "c6a.8xlarge" # 32 vCPU. 64 GiB RAM.
-      volume_iops       = 8000
-      volume_throughput = 1000
-    }
+    # FIXME: check with current prod? or decide new instance with many-builders?
+    instance_type     = "c6a.8xlarge" # 32 vCPU. 64 GiB RAM.
+    volume_iops       = 8000
+    volume_throughput = 1000
   }
   db_instance_class = "db.m6i.large" # 2 vCPUs. 8 GiB RAM.
 
