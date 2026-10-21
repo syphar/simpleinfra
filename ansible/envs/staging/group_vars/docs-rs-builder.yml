@@ -1,4 +1,5 @@
 ---
-
-sha: "{{ lookup('aws_ssm', '/docs-rs/builder/sha') }}"
-vars_repository_sha: "{{  sha | ternary(sha, 'HEAD') }}"
+ansible_ssh_common_args: '-o ProxyJump=bastion.docs-rs-staging.rust-lang.net'
+vars_s3_bucket: docs-rs-storage-519825364412
+# Bootstrap tag. Pin to a published commit SHA or digest before applying.
+vars_builder_image: 519825364412.dkr.ecr.us-east-1.amazonaws.com/docs-rs-build-server:latest

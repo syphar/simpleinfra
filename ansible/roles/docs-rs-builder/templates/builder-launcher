@@ -1,0 +1,48 @@
+#!/bin/bash
+# {{ ansible_managed }}
+set -euo pipefail
+export AWS_DEFAULT_REGION={{ vars_aws_region | quote }}
+export AWS_PAGER=""
+image={{ vars_builder_image | quote }}
+
+case "${1:-}" in
+  prepare)
+    # The trusted builder uses host networking. Sandboxes use Docker bridges:
+    # block their access to the instance profile, including IMDSv2 tokens.
+    iptables -C DOCKER-USER -d 169.254.169.254/32 -j REJECT 2>/dev/null || \
+      iptables -I DOCKER-USER 1 -d 169.254.169.254/32 -j REJECT
+
+    # Validate runsc before allowing the builder to consume the queue.
+    docker run --rm --runtime=runsc --network=none public.ecr.aws/docker/library/alpine:3.22 true
+
+    # Retrieve secrets on the host, never in Ansible output or the baked image.
+    umask 077
+    secret_file=/run/docs-rs-builder/database.env
+    printf 'DOCSRS_DATABASE_URL=' > "$secret_file"
+    /opt/docs-rs/awscli/bin/aws ssm get-parameter \
+      --name {{ vars_database_parameter | quote }} --with-decryption \
+      --query Parameter.Value --output text >> "$secret_file"
+
+    /opt/docs-rs/awscli/bin/aws ecr get-login-password | \
+      docker --config /run/docs-rs-builder/docker login \
+        --username AWS --password-stdin "${image%%/*}"
+    docker --config /run/docs-rs-builder/docker pull "$image"
+    # Only remove a stopped container; never interrupt an existing builder.
+    if docker container inspect docs-rs-builder >/dev/null 2>&1; then
+      docker container rm docs-rs-builder
+    fi
+    ;;
+  run)
+    # Bind at identical host/container paths: sibling build containers are
+    # launched by the HOST daemon, which resolves their source mount paths.
+    exec docker run --rm --name docs-rs-builder --init \
+      --runtime=runc --network=host \
+      --env-file /etc/docs-rs/builder.env \
+      --env-file /run/docs-rs-builder/database.env \
+      --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
+      --mount type=bind,src={{ vars_prefix_path }},dst={{ vars_prefix_path }} \
+      --mount type=bind,src={{ vars_workspace_path }},dst={{ vars_workspace_path }} \
+      "$image" start
+    ;;
+  *) echo "usage: $0 prepare|run" >&2; exit 2 ;;
+esac

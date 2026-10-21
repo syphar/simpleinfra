@@ -1,27 +1,22 @@
-#
 # {{ ansible_managed }}
-#
-
 [Unit]
 Description=The docs.rs Builder
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
-Environment=TMPDIR={{ vars_mountpoint_path }}
-Environment=DOCSRS_PREFIX={{ vars_mountpoint_path }}
-Environment=DOCSRS_RUSTWIDE_WORKSPACE={{ vars_mountpoint_path }}
-Environment=DOCSRS_LOG=debug
-Environment=DOCSRS_DATABASE_URL={{ vars_database_url }}
-Environment=DOCSRS_DOCKER_IMAGE=ghcr.io/rust-lang/crates-build-env/linux
-Environment=DOCSRS_STORAGE_BACKEND=s3
-Environment=S3_REGION=us-east-1
-Environment=DOCSRS_S3_BUCKET={{ vars_s3_bucket }}
-Environment=RUST_BACKTRACE=1
-Environment=DOCSRS_TOOLCHAIN={{ vars_toolchain }}
-
-LimitNOFILE=20000 # Consider removing now that we upload zip files
+Type=simple
+RuntimeDirectory=docs-rs-builder
+RuntimeDirectoryMode=0700
+ExecStartPre=/usr/local/sbin/docs-rs-builder prepare
+ExecStart=/usr/local/sbin/docs-rs-builder run
+ExecStop=/usr/bin/docker stop --time {{ vars_builder_stop_timeout }} docs-rs-builder
 Restart=on-failure
-WorkingDirectory={{ vars_working_dir }}
-ExecStart={{ vars_executable_path }} start-build-server
+RestartSec=30
+TimeoutStartSec=900
+TimeoutStopSec={{ vars_builder_stop_timeout + 30 }}
 
 [Install]
 WantedBy=multi-user.target

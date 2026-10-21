@@ -2,6 +2,16 @@ module "gh_oidc" {
   source = "../gha-oidc-provider"
 }
 
+resource "aws_iam_role_policy_attachment" "builder_ci_push" {
+  role       = module.web.ci_role_name
+  policy_arn = module.builder_ecr.policy_push_arn
+}
+
+resource "aws_iam_role_policy_attachment" "builder_ci_pull" {
+  role       = module.web.ci_role_name
+  policy_arn = module.builder_ecr.policy_pull_arn
+}
+
 resource "aws_iam_role_policy_attachment" "watcher_ci_push" {
   role       = module.web.ci_role_name
   policy_arn = module.watcher.policy_push_arn

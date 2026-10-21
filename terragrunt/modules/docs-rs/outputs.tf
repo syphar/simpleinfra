@@ -22,3 +22,15 @@ output "watcher_service_arn" {
   description = "Singleton registry watcher service."
   value       = aws_ecs_service.watcher.id
 }
+
+output "builder_instance_id" {
+  value = aws_instance.builder.id
+}
+
+output "builder_hostname" {
+  value = aws_route53_record.builder.fqdn
+}
+
+output "builder_repository_url" {
+  value = module.builder_ecr.url
+}

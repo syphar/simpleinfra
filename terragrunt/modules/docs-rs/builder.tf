@@ -14,6 +14,12 @@ resource "aws_instance" "builder" {
   iam_instance_profile        = aws_iam_instance_profile.builder.name
   associate_public_ip_address = true
 
+  metadata_options {
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+    http_protocol_ipv6          = "disabled"
+  }
+
   root_block_device {
     # Size of the volume in GiB.
     volume_size           = 64
@@ -36,6 +42,38 @@ resource "aws_instance" "builder" {
 resource "aws_eip_association" "builder" {
   instance_id   = aws_instance.builder.id
   allocation_id = aws_eip.builder.id
+}
+
+# SSH through the bastion to this private address.
+resource "aws_route53_record" "builder" {
+  zone_id = var.zone_id
+  name    = "builder.${var.domain}"
+  type    = "A"
+  ttl     = 300
+  records = [aws_instance.builder.private_ip]
+}
+
+module "builder_ecr" {
+  source = "../ecr-repo"
+  name   = "docs-rs-build-server"
+}
+
+resource "aws_iam_role_policy_attachment" "builder_ecr_pull" {
+  role       = aws_iam_role.builder.name
+  policy_arn = module.builder_ecr.policy_pull_arn
+}
+
+resource "aws_iam_role_policy" "builder_configuration" {
+  name = "builder-configuration"
+  role = aws_iam_role.builder.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameter"]
+      Resource = aws_ssm_parameter.connection_url.arn
+    }]
+  })
 }
 
 data "aws_ami" "ubuntu24" {
@@ -93,7 +131,9 @@ resource "aws_iam_role_policy" "builder_s3" {
         Effect = "Allow"
         Action = [
           "s3:PutObject",
+          "s3:GetObject",
           "s3:ListBucket",
+          "s3:AbortMultipartUpload",
           "s3:PutObjectTagging",
           "s3:DeleteObject"
         ]

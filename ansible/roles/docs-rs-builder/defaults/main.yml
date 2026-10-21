@@ -1,21 +1,18 @@
 ---
-
-vars_mountpoint_file_path: /builder.fs
-vars_mountpoint_size: 53687091200
-vars_mountpoint_path: /mnt/builder
-
-vars_user: builder
-vars_group: "{{ vars_user }}"
-vars_home_path: "/home/{{ vars_user }}"
-
-vars_repository_url: https://github.com/rust-lang/docs.rs
-vars_repository_sha: HEAD
-
-vars_checkout_path: "{{ vars_home_path }}/builder"
-vars_working_dir: "{{ vars_checkout_path }}"
-vars_executable_path: "{{ vars_working_dir }}/target/release/cratesfyi"
-
+vars_aws_region: us-east-1
+# Set the full ECR image reference in inventory. Prefer an immutable SHA or digest.
+vars_builder_image: ""
+vars_database_parameter: /docs-rs/database-url
+vars_s3_bucket: ""
+vars_prefix_path: /opt/docs-rs/prefix
+vars_workspace_path: /opt/docs-rs/workspace
 vars_toolchain: nightly
-
-vars_database_url: "{{ lookup('aws_ssm', '/docs-rs/database-url') }}"
-vars_s3_bucket: docs-rs-storage-519825364412
+vars_build_cpu_limit: 1
+# Leave room for the host and builder on the 4 GiB staging instance.
+vars_build_memory_limit: 2147483648
+vars_builder_stop_timeout: 300
+vars_awscli_version: "1.46.1"
+# Complete package, including gVisor helper binaries; checksum from its release index.
+vars_runsc_version: "20261012.0"
+vars_runsc_sha256: 7a440a035128a52f489b0bb76f60ac4df9cabe7cdf31dd5fd79a3e80f8a707ca
+vars_builder_environment: {}

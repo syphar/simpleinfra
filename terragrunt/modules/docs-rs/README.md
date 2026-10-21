@@ -75,7 +75,12 @@ Migrations run after the web rollout and must be compatible with that version.
 
 ## Background Worker
 
-**TODO**: the background worker is work in progress. Once it is fully configured, we should document how it works here.
+The builder runs on a dedicated Ubuntu EC2 instance. Terraform provisions the
+host, ECR repository, IAM permissions, and private-address DNS record; the
+[Ansible role](../../../ansible/roles/docs-rs-builder/README.md) installs Docker
+and gVisor and runs the builder container under systemd. Apply Terraform, publish
+the builder image, then apply Ansible. Host provisioning and application deployment
+are explicit operations; no custom AMI or automatic scaling is configured.
 
 ## Registry Watcher
 
