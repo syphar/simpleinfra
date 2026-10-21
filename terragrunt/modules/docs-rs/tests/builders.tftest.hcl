@@ -80,8 +80,8 @@ run "ecs_builders" {
     error_message = "A builder must only run on its own prepared host."
   }
   assert {
-    condition     = alltrue([for task in aws_ecs_task_definition.builder : task.network_mode == "host" && task.requires_compatibilities == toset(["EC2"])])
-    error_message = "Builder tasks require EC2 host access."
+    condition     = alltrue([for task in aws_ecs_task_definition.builder : task.network_mode == "bridge" && task.requires_compatibilities == toset(["EC2"])])
+    error_message = "Builder tasks require EC2 with bridge networking."
   }
   assert {
     condition     = { for env in jsondecode(aws_ecs_task_definition.builder["builder-2"].container_definitions)[0].environment : env.name => env.value }["DOCSRS_BUILD_CPU_LIMIT"] == "2"

@@ -52,9 +52,10 @@ Keep these hosts dedicated to builder workloads. No application ports are
 published, and SSH ingress is limited to the bastion.
 
 The host readiness service runs an offline-network gVisor test before ECS agent
-registration. It configures credential routing at boot. Crate-build sandboxes
-run with networking disabled. The trusted builder uses host networking and the ECS task
-credential proxy. Do not run untrusted sandboxes with host networking or mount
+registration. Crate-build sandboxes run with networking disabled. The trusted
+builder uses bridge networking; ECS-Init supplies routing to the ECS task
+credential endpoint. No container ports are published.
+Do not run untrusted sandboxes with host networking or mount
 the Docker socket into them. Docker socket access means the trusted builder is
 not isolated from the host or its agent.
 

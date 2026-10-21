@@ -65,7 +65,7 @@ resource "aws_ecs_task_definition" "builder" {
 
   family                   = "docs-rs-builder-${each.key}"
   requires_compatibilities = ["EC2"]
-  network_mode             = "host"
+  network_mode             = "bridge"
   task_role_arn            = aws_iam_role.builder_task.arn
   execution_role_arn       = aws_iam_role.builder_execution.arn
 
