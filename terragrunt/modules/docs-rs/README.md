@@ -78,9 +78,11 @@ Migrations run after the web rollout and must be compatible with that version.
 The builder runs on a dedicated Ubuntu EC2 instance. Terraform provisions the
 host, ECR repository, IAM permissions, and private-address DNS record; the
 [Ansible role](../../../ansible/roles/docs-rs-builder/README.md) installs Docker
-and gVisor and runs the builder container under systemd. Apply Terraform, publish
-the builder image, then apply Ansible. Host provisioning and application deployment
-are explicit operations; no custom AMI or automatic scaling is configured.
+and gVisor and runs the builder container under systemd. Staging uses cloud-init
+and a retrying systemd service to apply the role locally at first boot; no SSH
+provisioning step or custom AMI is needed. Production retains manual provisioning
+until `builder_provisioning` is configured. Application image publishing remains
+a separate operation; no automatic scaling is configured.
 
 ## Registry Watcher
 

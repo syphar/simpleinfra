@@ -5,54 +5,70 @@ Docker image under `builder.service`. No custom AMI is required. The host runs
 Docker and a pinned, checksum-verified gVisor package; only crate build
 containers use `runsc` (systrap), while the trusted builder uses `runc`.
 
-## First deployment
+## Automatic first-boot provisioning (staging)
 
-1. Apply `terragrunt/accounts/docs-rs-staging/vpc` to publish its bastion hostname
-   output, then plan and apply `terragrunt/accounts/docs-rs-staging/docs-rs`.
-   This provisions
-   the builder ECR repository, permissions, and a DNS record pointing to each
-   instance's private address (for example,
-   `builder-1.docs-rs-staging.rust-lang.net`). It does not run Ansible.
-2. Publish the docs.rs `build-server` image through its Docker pipeline. Pass
-   its published SHA tag or `sha256:...` digest to the wrapper below. The image
-   repository URL comes from Terraform; no image version is chosen implicitly.
-3. Ensure your SSH key works on the bastion and target. For a fresh instance,
-   temporarily install your key for `ubuntu` using EC2 Instance Connect as
-   described in the Ansible README. The instance ID is exposed by Terraform's
-   `builders` output map. Inventory uses ProxyJump through the bastion.
-4. From the `ansible` directory, run:
+Staging enables `builder_provisioning` in its Terragrunt inputs. After Terraform
+creates a host, cloud-init writes non-secret configuration and enables
+`docs-rs-provision.service`. This service installs Ansible, fetches the builder
+role at the configured full Git commit, and applies it to localhost. It retries
+after 60 seconds on failure, including package/repository/network failures.
+
+Terraform supplies the region, ECR repository and selected image version, bucket,
+database parameter name, and per-host build limits. No remote inventory, SSH
+bootstrap, controller-side AWS credentials, or custom AMI is required. This boot
+playbook runs only the builder role; it does not apply the shared `common` role
+or configure infra users. Bastion/EC2 Instance Connect access remains available
+for troubleshooting, as described in the Ansible README.
+
+1. Set `builder_provisioning.repository_url` and `.revision` to a public HTTPS
+   repository and a published full commit SHA containing the role. Staging is
+   pinned to the current role on the public fork; switch to upstream after merge.
+2. Set `builder_provisioning.image_version` to a published builder SHA tag or
+   `sha256:...` digest. Staging initially uses `latest` as an explicit bootstrap
+   choice. Publish the image through docs.rs's Docker pipeline after the ECR
+   repository and CI permissions have been applied. If the image is initially
+   absent, startup fails and provisioning retries until it is available.
+3. Apply the VPC unit to publish its bastion hostname output, then apply the
+   docs.rs unit. New staging builders provision themselves.
+4. Check provisioning and application logs on the host:
 
    ```sh
-   AWS_PROFILE=docs-rs-staging ./apply-docs-rs-builder staging --image-version <published-sha> -u ubuntu
+   sudo systemctl status docs-rs-provision.service builder.service
+   sudo journalctl -u docs-rs-provision.service -u builder.service -n 100
    ```
 
-   Use your configured AWS profile name. The common role also needs access to
-   the staging Ansible parameters in us-west-1; the builder reads its database
-   parameter on the host in us-east-1 using the instance role. The common role
-   configures infra users and SSH keys; subsequent runs should use an authorized
-   infra user instead of `ubuntu`.
+Provisioning writes `/var/lib/docs-rs-provisioning/success` only after the actual
+builder container starts. The service is skipped on subsequent reboots; the
+installed `builder.service` starts normally. Container startup does not prove
+that a crate build succeeds, so verify a small end-to-end build before promotion.
+Terraform apply completing alone does not signal provisioning readiness.
 
-The wrapper reads the applied `builder_ansible` Terraform output and creates a
-private temporary JSON inventory. Hosts, private IPs, instance IDs, region,
-bastion, bucket, database parameter name, and image repository all come from
-Terraform. It invokes `./apply` with this inventory alongside the existing
-staging inventory and removes the temporary file afterward. It never reads the
-database secret value. Apply Terraform after changing infrastructure so the
-outputs reflect the new resources.
+Boot configuration changes trigger EC2 replacement through
+`user_data_replace_on_change`. Enabling this on the existing staging host also
+requires replacement. Its current root volume and workspace caches are deleted
+on termination. Review the plan and avoid replacing a builder with an active
+build. Production stays on manual provisioning unless its `builder_provisioning`
+input is explicitly enabled.
 
-Use `--print-inventory` to inspect the generated configuration without running
-Ansible, or forward normal `./apply` flags such as `--check` and `--limit`:
+## Manual maintenance or provisioning
+
+The output-based wrapper remains available for existing hosts and production:
 
 ```sh
-./apply-docs-rs-builder staging --image-version <published-sha> --print-inventory
-./apply-docs-rs-builder staging --image-version <published-sha> --limit builder-2.docs-rs-staging.rust-lang.net
+AWS_PROFILE=docs-rs-staging ./apply-docs-rs-builder staging --image-version <published-sha> -u ubuntu
 ```
 
-Reapply through the wrapper after changing the image or configuration. For an explicit
-restart with an unchanged image setting, SSH to the host and run
-`sudo systemctl restart builder`. A failed pull or secret lookup prevents startup
-and systemd retries after 30 seconds. This setup does not automatically drain an
-active build; update or restart an idle builder during initial testing.
+Run it from `ansible/`. It reads the applied `builder_ansible` output and creates
+a temporary inventory; `--print-inventory` prints its non-secret contents without
+running Ansible. Normal options such as `--limit` and `--check` are forwarded.
+The wrapper's full playbook also applies `common`, including infra users; that
+path needs the existing controller-side Ansible credentials. Fresh hosts need
+SSH bootstrap access when using this manual path.
+
+For an unchanged image setting, `sudo systemctl restart builder` pulls it again.
+This setup does not drain active builds; update idle builders during initial
+use. A manual configuration change is local to that instance: change the
+Terraform boot configuration as well if replacements should retain the change.
 
 ## Runtime configuration
 
@@ -110,11 +126,11 @@ module interface. Each entry accepts `instance_type`, `volume_size` (GiB),
 `volume_iops`, and `volume_throughput` (MiB/s). All builders use the first subnet
 in the shared cluster configuration.
 
-After adding a builder, apply Terraform and rerun the wrapper; inventory follows
-the Terraform output automatically. Keep operational settings in the environment's
-`group_vars/docs-rs-builder.yml`. For a differently sized host, set
-`vars_build_cpu_limit` and `vars_build_memory_limit` in its `host_vars` file;
-do not assume that increasing EC2 size adjusts build limits.
+With automatic provisioning enabled, adding a builder and applying Terraform
+is sufficient. Configure per-host `build_cpu_limit` and `build_memory_limit`
+alongside instance size in the `builders` map. These settings also appear in the
+manual wrapper's inventory. Ansible group/host vars are only loaded by the manual
+path, so do not rely on them to configure first boot.
 Every host has its own workspace, while the image, instance role, security group,
 and database queue are shared. No automatic scaling is configured.
 

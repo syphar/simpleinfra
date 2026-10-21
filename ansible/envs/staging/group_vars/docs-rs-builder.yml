@@ -1,5 +1,3 @@
 ---
-# Infrastructure settings and hosts come from the generated Terraform inventory.
-# Keep operational settings here; individual hosts can override these in host_vars.
-vars_build_cpu_limit: 1
-vars_build_memory_limit: 2147483648
+# Hosts, infrastructure settings, and per-builder resource limits come from
+# Terraform. Additional manual-maintenance settings can be placed here.

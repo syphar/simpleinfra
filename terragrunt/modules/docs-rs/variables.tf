@@ -33,10 +33,12 @@ variable "cluster_config" {
 variable "builders" {
   description = "Named amd64 builders. Keys are stable identities and DNS labels; settings can vary per host."
   type = map(object({
-    instance_type     = string
-    volume_size       = optional(number, 64)
-    volume_iops       = optional(number, 3000)
-    volume_throughput = optional(number, 125)
+    instance_type      = string
+    volume_size        = optional(number, 64)
+    volume_iops        = optional(number, 3000)
+    volume_throughput  = optional(number, 125)
+    build_cpu_limit    = optional(number, 1)
+    build_memory_limit = optional(number, 2147483648)
   }))
 
   validation {
@@ -78,4 +80,25 @@ variable "db_instance_class" {
 variable "bastion_hostname" {
   type        = string
   description = "Bastion DNS hostname used by the generated builder Ansible inventory."
+}
+
+variable "builder_provisioning" {
+  description = "Enable first-boot local Ansible provisioning. Null leaves existing manual provisioning available."
+  type = object({
+    repository_url  = string
+    revision        = string
+    image_version   = string
+    ansible_version = optional(string, "2.17.1")
+  })
+  default = null
+
+  validation {
+    condition = var.builder_provisioning == null ? true : (
+      startswith(var.builder_provisioning.repository_url, "https://") &&
+      can(regex("^[a-f0-9]{40}$", var.builder_provisioning.revision)) &&
+      can(regex("^([A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|sha256:[a-f0-9]{64})$", var.builder_provisioning.image_version)) &&
+      can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.builder_provisioning.ansible_version))
+    )
+    error_message = "Provisioning requires an HTTPS repository, full lowercase commit SHA, valid image tag/digest, and exact Ansible version."
+  }
 }

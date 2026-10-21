@@ -76,6 +76,9 @@ jobs:
       - name: Ensure the terraform files are formatted correctly
         run: terraform fmt -check -diff -recursive
 
+      - name: Test builder provisioning helpers
+        run: python3 -m unittest discover -s ansible/tests -v
+
       - name: Test OIDC role module
         working-directory: terragrunt/modules/gha-oidc-role
         run: |

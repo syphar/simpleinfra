@@ -29,6 +29,8 @@ def builder_inventory(config, image_version):
         hosts[hostname] = {
             "ansible_host": str(ipaddress.IPv4Address(builder["private_ip"])),
             "ec2_instance_id": builder["instance_id"],
+            **{f"vars_{setting}": builder[setting]
+               for setting in ("build_cpu_limit", "build_memory_limit") if setting in builder},
         }
     if not hosts:
         raise ValueError("Terraform has no builders; refusing to run an empty playbook")

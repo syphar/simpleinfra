@@ -40,6 +40,16 @@ resource "aws_instance" "builder" {
   iam_instance_profile        = aws_iam_instance_profile.builder.name
   associate_public_ip_address = true
 
+  user_data                   = var.builder_provisioning == null ? null : local.builder_user_data[each.key]
+  user_data_replace_on_change = true
+
+  # Ensure the boot service can read configuration and pull its image. IAM
+  # propagation delays are handled by the provisioning service's retries.
+  depends_on = [
+    aws_iam_role_policy_attachment.builder_ecr_pull,
+    aws_iam_role_policy.builder_configuration,
+  ]
+
   metadata_options {
     http_tokens                 = "required"
     http_put_response_hop_limit = 1

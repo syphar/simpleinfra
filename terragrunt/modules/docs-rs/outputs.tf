@@ -26,10 +26,12 @@ output "watcher_service_arn" {
 locals {
   builder_hosts = {
     for name, instance in aws_instance.builder : name => {
-      instance_id   = instance.id
-      instance_type = instance.instance_type
-      private_ip    = instance.private_ip
-      hostname      = aws_route53_record.builder[name].fqdn
+      instance_id        = instance.id
+      instance_type      = instance.instance_type
+      build_cpu_limit    = var.builders[name].build_cpu_limit
+      build_memory_limit = var.builders[name].build_memory_limit
+      private_ip         = instance.private_ip
+      hostname           = aws_route53_record.builder[name].fqdn
     }
   }
 }
