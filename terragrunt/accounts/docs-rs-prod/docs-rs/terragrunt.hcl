@@ -39,9 +39,11 @@ inputs = {
   }
   builder_count = 1
   builder_config = {
-    # Production builder size and disk performance.
-    # FIXME: check with current prod? or decide new instance with many-builders?
-    instance_type     = "c6a.8xlarge" # 32 vCPU. 64 GiB RAM.
+    # 16 vCPU, 32 GiB RAM: headroom for 12-vCPU builds and 12 GiB memory exceptions.
+    instance_type      = "c8i.4xlarge"
+    build_cpu_limit    = 12
+    build_memory_limit = 6442450944 # 6 GiB default; per-crate exceptions can raise this.
+    # Current legacy EBS performance.
     volume_iops       = 8000
     volume_throughput = 1000
   }
