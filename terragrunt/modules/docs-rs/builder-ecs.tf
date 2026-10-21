@@ -80,30 +80,34 @@ resource "aws_ecs_task_definition" "builder" {
     memoryReservation = 512
     memory            = 1024
     stopTimeout       = 120
+
     environment = [for name, value in merge(local.common_environment, {
       DOCSRS_PREFIX                                    = local.builder_prefix_path
       DOCSRS_RUSTWIDE_WORKSPACE                        = local.builder_workspace_path
-      DOCSRS_DOCKER                                    = "true"
+      DOCSRS_DOCKER                                    = true
       DOCSRS_DOCKER_RUNTIME                            = "runsc"
       DOCSRS_TOOLCHAIN                                 = "nightly"
       DOCSRS_LOG                                       = "info,rustwide=info"
       DOCSRS_MIN_POOL_IDLE                             = "1"
       DOCSRS_MAX_POOL_SIZE                             = "4"
-      DOCSRS_LOG_BUILD_LOGS                            = "false"
-      DOCSRS_AWS_SDK_MAX_RETRIES                       = "10"
-      DOCSRS_INCLUDE_DEFAULT_TARGETS                   = "false"
+      DOCSRS_LOG_BUILD_LOGS                            = false
+      DOCSRS_AWS_SDK_MAX_RETRIES                       = 10
+      DOCSRS_INCLUDE_DEFAULT_TARGETS                   = false
       DOCSRS_BUILD_CPU_LIMIT                           = tostring(each.value.build_cpu_limit)
       DOCSRS_BUILD_DEFAULT_MEMORY_LIMIT                = tostring(each.value.build_memory_limit)
       DOCSRS_BUILD_WORKSPACE_REINITIALIZATION_INTERVAL = "2h"
     }) : { name = name, value = value }]
+
     secrets = [for name, arn in merge(local.common_computed_secrets, {
       DOCSRS_GITHUB_ACCESSTOKEN = local.github_token_arn
     }) : { name = name, valueFrom = arn }]
+
     mountPoints = [
       { sourceVolume = "docker", containerPath = "/var/run/docker.sock", readOnly = false },
       { sourceVolume = "prefix", containerPath = local.builder_prefix_path, readOnly = false },
       { sourceVolume = "workspace", containerPath = local.builder_workspace_path, readOnly = false },
     ]
+
     logConfiguration = {
       logDriver = "awslogs"
       options = {
