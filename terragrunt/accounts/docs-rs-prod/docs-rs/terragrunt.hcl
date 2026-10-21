@@ -37,7 +37,7 @@ inputs = {
       if path != "README.md"
     }
   }
-  builder_count = 1
+  builder_count = 2
   builder_config = {
     # 16 vCPU, 32 GiB RAM: headroom for 12-vCPU builds and 12 GiB memory exceptions.
     instance_type      = "c8i.4xlarge"
