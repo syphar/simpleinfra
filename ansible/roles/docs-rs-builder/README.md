@@ -14,11 +14,12 @@ controller credentials, SSH bootstrap, or custom AMI is required. The payload
 contains code and host settings, never application secret values. Terraform
 checks the EC2 user data limit of 16 KiB.
 
-Cloud-init queues `docs-rs-provision.service` after cloud-final completes. That
-service installs Ansible and runs this role against localhost. It retries on
-failure every 60 seconds and records success only after the ECS agent registers
-with the expected cluster. On subsequent reboots, the installed services start
-normally without rerunning provisioning.
+Cloud-init's native Ansible module installs Ubuntu's `ansible-core` package and
+runs the embedded playbook locally. The role waits for the ECS agent to register
+with the expected cluster, retrying the registration check for about five minutes.
+Provisioning runs once per instance; subsequent boots start the installed services.
+A failed bootstrap is reported by cloud-init and requires investigation or instance
+replacement rather than an automatic retry of the entire playbook.
 
 The agent registers a `docsrs-builder` attribute matching the Terraform builder
 key. A host-specific ECS daemon service (`docs-rs-builder-<key>`) runs one builder
@@ -90,8 +91,10 @@ Review replacement plans and do not terminate an active production builder.
 ## Verification
 
 ```sh
-sudo systemctl status docs-rs-provision.service docs-rs-builder-host.service ecs.service
-sudo journalctl -u docs-rs-provision.service -u ecs.service -n 100
+sudo cloud-init status --long
+sudo tail -n 100 /var/log/cloud-init-output.log
+sudo systemctl status docs-rs-builder-host.service ecs.service
+sudo journalctl -u ecs.service -n 100
 curl http://127.0.0.1:51678/v1/metadata
 sudo docker ps
 ```

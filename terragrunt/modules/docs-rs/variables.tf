@@ -80,18 +80,16 @@ variable "db_instance_class" {
 variable "builder_provisioning" {
   description = "First-boot ECS host provisioning with compressed Ansible role files from this checkout."
   type = object({
-    role_files      = map(string)
-    ansible_version = optional(string, "2.17.1")
+    role_files = map(string)
   })
   nullable = false
 
   validation {
     condition = (
       contains(keys(var.builder_provisioning.role_files), "tasks/main.yml") &&
-      alltrue([for path in keys(var.builder_provisioning.role_files) : !startswith(path, "/") && !contains(split("/", path), "..")]) &&
-      can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.builder_provisioning.ansible_version))
+      alltrue([for path in keys(var.builder_provisioning.role_files) : !startswith(path, "/") && !contains(split("/", path), "..")])
     )
-    error_message = "Supply relative role file paths including tasks/main.yml and an exact Ansible version."
+    error_message = "Supply relative role file paths including tasks/main.yml."
   }
 }
 

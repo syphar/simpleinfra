@@ -104,6 +104,17 @@ run "ecs_builders" {
     error_message = "Application S3 access must belong to the task role."
   }
   assert {
+    condition = alltrue([for host in aws_instance.builder :
+      jsondecode(trimprefix(host.user_data, "#cloud-config\n")).ansible.install_method == "distro" &&
+      jsondecode(trimprefix(host.user_data, "#cloud-config\n")).ansible.package_name == "ansible-core" &&
+      jsondecode(trimprefix(host.user_data, "#cloud-config\n")).ansible.setup_controller.run_ansible[0].playbook_dir == "/opt/docs-rs-provision" &&
+      jsondecode(trimprefix(host.user_data, "#cloud-config\n")).ansible.setup_controller.run_ansible[0].playbook_name == "provision.yml" &&
+      jsondecode(trimprefix(host.user_data, "#cloud-config\n")).ansible.setup_controller.run_ansible[0].inventory == "localhost," &&
+      !contains(keys(jsondecode(trimprefix(host.user_data, "#cloud-config\n"))), "runcmd")
+    ])
+    error_message = "Cloud-init must install Ansible and run the embedded local playbook through its native module."
+  }
+  assert {
     condition     = alltrue([for host in aws_instance.builder : length(host.user_data) <= 16384])
     error_message = "Cloud-init must remain within EC2's user data size limit."
   }
