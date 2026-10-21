@@ -42,6 +42,7 @@ inputs = {
   builder_config = {
     # Each host: 4 vCPU, 16 GiB RAM, leaving headroom above the 6 GiB build limit.
     instance_type      = "m6a.xlarge"
+    build_cpu_limit    = 3
     build_memory_limit = 6442450944 # 6 GiB per crate-build container.
   }
   db_instance_class = "db.t4g.small" # 2 vCPUs. 2 GiB RAM.
