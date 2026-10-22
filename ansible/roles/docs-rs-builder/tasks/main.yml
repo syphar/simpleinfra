@@ -132,3 +132,20 @@
     - ((ecs_registration.json | default({})).Cluster | default('')).split('/')[-1] == vars_ecs_cluster
   retries: 60
   delay: 5
+
+- name: Install daily Docker cleanup units
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: '0644'
+  loop:
+    - prune-disk-space.service
+    - prune-disk-space.timer
+  notify: restart-docker-cleanup-timer
+
+- name: Enable daily Docker cleanup
+  ansible.builtin.systemd:
+    name: prune-disk-space.timer
+    state: started
+    enabled: true
+    daemon_reload: true

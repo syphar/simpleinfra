@@ -94,6 +94,10 @@ on instance termination. Monitor the shared 64 GiB default disk; larger builds
 will need more storage. Only the controller container has an ECS memory limit;
 Rustwide applies the separately configured CPU/memory limits to build sandboxes.
 
+A daily `prune-disk-space.timer` runs as root with `AccuracySec=12h`. It prunes
+stopped containers without an ECS task label and dangling, unreferenced Docker
+images. Running containers and volumes are not removed.
+
 Daemon deployments stop the previous task before starting its replacement.
 ECS does not clean up sibling build containers when the builder stops. Queue
 recovery and end-to-end build behavior must be verified on staging before

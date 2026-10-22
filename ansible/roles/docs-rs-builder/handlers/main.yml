@@ -10,3 +10,9 @@
     name: ecs
     state: restarted
     daemon_reload: true
+
+- name: restart-docker-cleanup-timer
+  ansible.builtin.systemd:
+    name: prune-disk-space.timer
+    state: restarted
+    daemon_reload: true
