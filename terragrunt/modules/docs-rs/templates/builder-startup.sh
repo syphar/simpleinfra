@@ -46,10 +46,8 @@ instance_id=$(curl --fail --silent --show-error --max-time 5 --noproxy '*' \
     -H "X-aws-ec2-metadata-token: $metadata_token" \
     http://169.254.169.254/latest/meta-data/instance-id)
 printf '%s\n' "$instance_id" > /etc/docs-rs/instance-id
-builder_name="docs-rs-builder-$instance_id"
 prefix=$(jq -r .prefix /etc/docs-rs/host.json)
 workspace=$(jq -r .workspace /etc/docs-rs/host.json)
-hostnamectl set-hostname "$builder_name"
 
 # Like Crater, use the official AWS CLI installer. Instance-role credentials
 # are discovered automatically; no static credentials are written to disk.

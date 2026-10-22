@@ -13,7 +13,7 @@ use the first shared subnet and receive public IPs for outbound internet access.
 The security group has no inbound rules, including SSH. No interactive host-access
 method or automatic workload scaling policy is configured.
 
-Hosts have generated instance identities rather than stable numbered names or
+Hosts keep their AMI-provided hostnames and have instance identities rather than stable numbered names or
 DNS records. Outputs expose `builder_autoscaling_group_name`,
 `builder_launch_template_id`, `builder_launch_template_version`, and
 `builder_repository_url`.
