@@ -46,11 +46,11 @@ resource "aws_instance" "builder" {
   iam_instance_profile        = aws_iam_instance_profile.builder.name
   associate_public_ip_address = true
 
-  user_data                   = local.builder_user_data[each.key]
+  user_data_base64            = base64gzip(local.builder_user_data[each.key])
   user_data_replace_on_change = true
 
   # Register only after the ECS agent's instance permissions are attached.
-  depends_on = [aws_iam_role_policy_attachment.builder_agent]
+  depends_on = [aws_iam_role_policy_attachment.builder_agent, aws_iam_role_policy.builder_bootstrap]
 
   metadata_options {
     http_tokens                 = "required"
@@ -76,7 +76,7 @@ resource "aws_instance" "builder" {
     ignore_changes = [ami]
 
     precondition {
-      condition     = length(local.builder_user_data[each.key]) <= 16384
+      condition     = length(base64gzip(local.builder_user_data[each.key])) / 4 * 3 - length(regex("=*$", base64gzip(local.builder_user_data[each.key]))) <= 16384
       error_message = "Builder cloud-init exceeds EC2's 16 KiB user data limit."
     }
   }

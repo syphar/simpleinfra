@@ -86,14 +86,20 @@ variable "db_instance_class" {
 variable "builder_provisioning" {
   description = "First-boot ECS host provisioning with compressed Ansible role files from this checkout."
   type = object({
-    role_files = map(string)
+    role_files           = map(string)
+    common_role_files    = map(string)
+    common_variables     = string
+    sudo_users           = list(string)
+    ubuntu_pro_role_arn  = string
+    ubuntu_pro_parameter = string
   })
   nullable = false
 
   validation {
     condition = (
       contains(keys(var.builder_provisioning.role_files), "tasks/main.yml") &&
-      alltrue([for path in keys(var.builder_provisioning.role_files) : !startswith(path, "/") && !contains(split("/", path), "..")])
+      contains(keys(var.builder_provisioning.common_role_files), "tasks/main.yml") &&
+      alltrue([for path in concat(keys(var.builder_provisioning.role_files), keys(var.builder_provisioning.common_role_files)) : !startswith(path, "/") && !contains(split("/", path), "..")])
     )
     error_message = "Supply relative role file paths including tasks/main.yml."
   }

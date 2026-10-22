@@ -1,3 +1,4 @@
 ---
-# Host connections and ECS registration settings come from Terraform.
-# Application settings and build limits belong to the ECS task definition.
+vars_docs_rs_sudo_users:
+  - syphar
+  - guillaumegomez

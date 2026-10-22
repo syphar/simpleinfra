@@ -7,15 +7,37 @@ the builder, fetch application secrets, or authenticate to the private ECR repo.
 
 ## Provisioning and deployment
 
-Both environments supply the required `builder_provisioning` in Terragrunt. It compresses the role
-files from this checkout into cloud-init, so first boot uses exactly the role
+Both environments supply the required `builder_provisioning` in Terragrunt. It embeds
+the `common` and builder roles from this checkout in gzip-compressed cloud-init,
+so first boot uses exactly the roles
 reviewed alongside the infrastructure change. No separately published Git commit,
 controller credentials, SSH bootstrap, or custom AMI is required. The payload
 contains code and host settings, never application secret values. Terraform
-checks the EC2 user data limit of 16 KiB.
+checks the compressed EC2 user data limit of 16 KiB. Only authorized administrators'
+public keys and the existing master public key are bundled.
+
+The `common` role creates the docs.rs maintainers and global infrastructure
+administrators as sudo users, configures SSH and the host firewall, attaches
+Ubuntu Pro, and enables security updates. Papertrail and metric collector arguments
+are omitted: log forwarding is disabled and node exporter is installed but stopped.
+`common` creates backup scaffolding only, not scheduled backups. Datadog agent
+installation is not part of this bootstrap yet.
+
+Before launching builders, apply `terraform/docs-rs` in the infrastructure account
+to create the environment-specific Ubuntu Pro bootstrap roles. During provisioning,
+the instance assumes its role to read the existing `/staging/ansible/all/ubuntu-pro-token`
+or `/prod/ansible/all/ubuntu-pro-token` parameter in `us-west-1`. The token and
+short-lived credentials are handled in Ansible memory with logging suppressed;
+the common role removes its temporary activation file after use. They are never
+embedded in user data or Terraform state. The instance role has no direct SSM
+access to application secrets.
+
+Cloud-init uses a named local inventory entry for the hostname. The common role's
+remote reboot handler is disabled during local provisioning; the freshly launched
+host continues without a reboot.
 
 Cloud-init's native Ansible module installs Ubuntu's `ansible-core` package and
-runs the embedded playbook locally. The role waits for the ECS agent to register
+runs the embedded playbook locally, with `common` before `docs-rs-builder`. The role waits for the ECS agent to register
 with the expected cluster, retrying the registration check for about five minutes.
 The role manages the ECS systemd unit without a `cloud-final.service` dependency,
 so startup and registration can complete while cloud-init runs Ansible.
@@ -57,7 +79,8 @@ Ansible runs a container with networking disabled through gVisor after applying
 Docker configuration and before installing the ECS agent. This smoke test runs
 during provisioning, not on subsequent boots. Crate-build sandboxes run with networking disabled. The trusted
 builder uses bridge networking; ECS-Init supplies routing to the ECS task
-credential endpoint. No container ports are published.
+credential endpoint. A host firewall rule allows Docker bridge traffic to that
+credential proxy. No container ports are published.
 Do not run untrusted sandboxes with host networking or mount
 the Docker socket into them. Docker socket access means the trusted builder is
 not isolated from the host or its agent.

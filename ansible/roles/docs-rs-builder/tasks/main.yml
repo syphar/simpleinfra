@@ -72,6 +72,13 @@
     - "{{ vars_prefix_path }}"
     - "{{ vars_workspace_path }}"
 
+- name: Allow ECS task credentials through the common host firewall
+  ansible.builtin.template:
+    src: ecs-firewall.sh
+    dest: /etc/firewall/ecs.sh
+    mode: '0755'
+  notify: reload-firewall
+
 - name: Configure the ECS agent
   ansible.builtin.template:
     src: ecs.config

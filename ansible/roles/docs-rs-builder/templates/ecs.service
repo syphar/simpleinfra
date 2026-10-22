@@ -4,9 +4,9 @@
 [Unit]
 Description=Amazon Elastic Container Service - container agent
 Wants=network-online.target
-Requires=docker.service
+Requires=docker.service firewall.service
 PartOf=docker.service
-After=network-online.target docker.service
+After=network-online.target docker.service firewall.service
 
 [Service]
 Type=simple
