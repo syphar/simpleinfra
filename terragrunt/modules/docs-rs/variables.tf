@@ -83,18 +83,6 @@ variable "db_instance_class" {
   description = "The RDS instance class for the docs-rs database"
 }
 
-variable "builder_ubuntu_pro_parameter" {
-  description = "Local SSM SecureString containing the Ubuntu Pro token for first-boot activation."
-  type        = string
-  default     = "/docs-rs/ubuntu-pro-token"
-  nullable    = false
-
-  validation {
-    condition     = startswith(var.builder_ubuntu_pro_parameter, "/")
-    error_message = "The Ubuntu Pro parameter must be an absolute SSM parameter path."
-  }
-}
-
 variable "builder_image_version" {
   type        = string
   default     = "latest"

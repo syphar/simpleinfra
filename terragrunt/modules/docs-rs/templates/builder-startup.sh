@@ -35,7 +35,7 @@ fi
 
 apt-get -o Acquire::Retries=3 update
 apt-get -o DPkg::Lock::Timeout=600 install -y \
-    ca-certificates curl jq unzip docker.io ubuntu-pro-client unattended-upgrades
+    ca-certificates curl jq unzip docker.io
 
 AWS_REGION=$(jq -r .region /etc/docs-rs/host.json)
 export AWS_DEFAULT_REGION="$AWS_REGION"
@@ -59,43 +59,6 @@ if ! command -v aws >/dev/null 2>&1; then
     unzip -q "$workdir/aws.zip" -d "$workdir"
     "$workdir/aws/install"
 fi
-
-# Keep the token out of command arguments, Terraform state, and cloud-init logs.
-if ! pro status --format json | jq --exit-status '.attached == true' >/dev/null; then
-    token_config="$workdir/ubuntu-pro.json"
-    (umask 077; aws ssm get-parameter \
-        --name "$(jq -r .ubuntu_pro_parameter /etc/docs-rs/host.json)" \
-        --with-decryption --query Parameter.Value --output json \
-        | jq --exit-status 'select(type == "string" and length > 0) | {token: .}' > "$token_config")
-    if ! pro attach --attach-config "$token_config" >/dev/null 2>&1; then
-        echo 'Ubuntu Pro activation failed; inspect pro status on the host' >&2
-        exit 1
-    fi
-    rm -f "$token_config"
-fi
-pro status --format json | jq --exit-status '.attached == true' >/dev/null
-apt-get -o Acquire::Retries=3 update
-
-# Match the targeted kernel mitigations used by the common Ansible role.
-cat > /etc/modprobe.d/disable-algif.conf <<'CONFIG'
-install algif_aead /bin/false
-CONFIG
-cat > /etc/modprobe.d/dirtyfrag.conf <<'CONFIG'
-install esp4 /bin/false
-install esp6 /bin/false
-install rxrpc /bin/false
-CONFIG
-rmmod algif_aead 2>/dev/null || true
-rmmod esp4 esp6 rxrpc 2>/dev/null || true
-sysctl -w vm.drop_caches=3
-
-# Use security-only unattended upgrades; do not reboot automatically.
-cat > /etc/apt/apt.conf.d/20auto-upgrades <<'CONFIG'
-APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Unattended-Upgrade "1";
-Unattended-Upgrade::Automatic-Reboot "false";
-CONFIG
-systemctl enable --now unattended-upgrades.service
 
 install -d -m 0755 /etc/docker "$prefix" "$workspace"
 cat > /etc/docker/daemon.json <<'CONFIG'

@@ -47,7 +47,6 @@ resource "aws_iam_role_policy" "builder_startup" {
         Resource = [
           aws_ssm_parameter.connection_url.arn,
           local.github_token_arn,
-          "arn:${data.aws_partition.builder.partition}:ssm:${data.aws_region.builder.region}:${data.aws_caller_identity.current.account_id}:parameter${var.builder_ubuntu_pro_parameter}",
         ]
       },
       {

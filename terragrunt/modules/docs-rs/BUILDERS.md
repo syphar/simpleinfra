@@ -27,14 +27,11 @@ once the host is running; EC2 health checks do not detect every application fail
 
 ## First boot and secrets
 
-Create `/docs-rs/ubuntu-pro-token` as an SSM SecureString in each docs.rs account
-in `us-east-1`, using the default SSM encryption key. Both accounts can use the
-existing subscription token. `builder_ubuntu_pro_parameter` overrides the path.
-The existing database and GitHub token parameters must also be available.
-
-The startup script installs packages and the AWS CLI, configures Ubuntu Pro,
-applies the targeted kernel mitigations, and enables unattended security updates
-without automatic reboots. It installs checksum-pinned gVisor, configures Docker,
+The database and GitHub token parameters must be available in the local account.
+The startup script installs packages and the AWS CLI, then configures Docker.
+It does not attach Ubuntu Pro, apply custom kernel mitigations, or configure
+unattended upgrades; OS maintenance depends on the selected AMI and host replacement.
+It installs checksum-pinned gVisor, configures Docker,
 and runs an offline-network sandbox smoke test. It writes the builder launcher,
 systemd service, and daily cleanup timer, then starts the builder. There is no
 ECS agent. No scheduled daily AMI build or host recycling is configured yet.
@@ -56,10 +53,9 @@ not embedded in user data, command arguments, or Terraform state by this launche
 Container environment values remain accessible to administrators with Docker
 access. Secret rotations take effect on service restart or host replacement.
 
-The instance role grants SSM access to only the required parameters, ECR pull,
-S3 access to the docs.rs bucket, log-stream writes, and completion of its ASG's
-launch hook. The Ubuntu Pro token uses a temporary root-only file removed when
-the startup script exits. No cross-account role assumption is needed.
+The instance role grants SSM access to only the database and GitHub token
+parameters, ECR pull, S3 access to the docs.rs bucket, log-stream writes, and
+completion of its ASG's launch hook. No cross-account role assumption is needed.
 
 ## Runtime and isolation
 
