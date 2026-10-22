@@ -8,6 +8,3 @@ avoid_removing_docker_users: []
 papertrail_url: null
 allow_ssh_extra_groups: ""
 ubuntu_pro_token: "{{ vars_ubuntu_pro_token }}"
-
-# Local cloud-init provisioning cannot use Ansible's remote reboot action.
-common_reboot_enabled: true

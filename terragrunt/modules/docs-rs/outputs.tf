@@ -37,7 +37,7 @@ locals {
 }
 
 output "builders" {
-  description = "Builder connection details keyed by stable builder name. SSH uses private addresses through the bastion."
+  description = "Builder instance details keyed by stable builder name."
   value       = local.builder_hosts
 }
 

@@ -89,7 +89,7 @@ resource "aws_eip_association" "builder" {
   allocation_id = aws_eip.builder[each.key].id
 }
 
-# SSH through the bastion to this private address.
+# Private address for identifying the builder host.
 resource "aws_route53_record" "builder" {
   for_each = local.builders
 
@@ -186,20 +186,13 @@ resource "aws_iam_role_policy" "builder_s3" {
   })
 }
 
-// Security group allowing all egress and ssh ingress from the bastion instance
+// Builders initiate outbound connections and accept no inbound traffic.
 resource "aws_security_group" "builder" {
   vpc_id      = var.cluster_config.vpc_id
   name        = "docs-rs-builder"
   description = "Access rules for the docs-rs builder."
 
-  // SSH access from the bastion instance
-  ingress {
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    description     = "SSH access from bastion"
-    security_groups = [var.bastion_security_group_id]
-  }
+  ingress = []
 
   // Allow outgoing connections
 

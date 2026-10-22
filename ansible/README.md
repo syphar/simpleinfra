@@ -24,8 +24,8 @@ the extension.
 
 ### docs.rs builders
 
-Builder hosts are provisioned automatically through cloud-init.
-See the [builder role documentation](roles/docs-rs-builder/README.md) for setup.
+Builder hosts use a Terraform-rendered cloud-init shell script, without Ansible.
+See the [builder documentation](../terragrunt/modules/docs-rs/BUILDERS.md) for setup.
 
 ### Executing a playbook on a new server
 

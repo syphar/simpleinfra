@@ -1,4 +1,3 @@
-# {{ ansible_managed }}
 [Unit]
 Description=Clean up stopped build containers and dangling Docker images
 Requires=docker.service

@@ -98,7 +98,3 @@ sudo unattended-upgrades --dry-run --debug
 
 - [Ubuntu help](https://help.ubuntu.com/community/AutomaticSecurityUpdates)
 - [Debian wiki](https://wiki.debian.org/UnattendedUpgrades)
-
-For local cloud-init provisioning, set `common_reboot_enabled: false` to suppress
-the remote reboot handler after hostname changes. Its default is `true` for
-existing remotely managed hosts.

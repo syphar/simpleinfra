@@ -1,12 +1,11 @@
-# {{ ansible_managed }}
 # Based on the pinned ECS-Init unit. Do not order after cloud-final.service:
-# cloud-init runs Ansible and waits for this agent to register.
+# the startup script waits for this agent to register.
 [Unit]
 Description=Amazon Elastic Container Service - container agent
 Wants=network-online.target
-Requires=docker.service firewall.service
+Requires=docker.service
 PartOf=docker.service
-After=network-online.target docker.service firewall.service
+After=network-online.target docker.service
 
 [Service]
 Type=simple

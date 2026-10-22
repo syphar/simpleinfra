@@ -1,7 +1,0 @@
----
-- name: Read the account's Ubuntu Pro subscription token
-  ansible.builtin.set_fact:
-    vars_ubuntu_pro_token: >-
-      {{ lookup('amazon.aws.ssm_parameter', vars_ubuntu_pro_parameter,
-                region=vars_aws_region) }}
-  no_log: true

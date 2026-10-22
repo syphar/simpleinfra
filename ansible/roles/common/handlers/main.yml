@@ -25,5 +25,4 @@
   shell: systemctl daemon-reload
 
 - name: reboot
-  when: common_reboot_enabled | bool
   reboot:

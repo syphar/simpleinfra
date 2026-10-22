@@ -1,4 +1,3 @@
-# {{ ansible_managed }}
 [Unit]
 Description=Daily Docker container and image cleanup
 

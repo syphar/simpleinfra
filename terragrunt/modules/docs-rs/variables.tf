@@ -15,7 +15,7 @@ variable "private_subnet_ids" {
 
 variable "bastion_security_group_id" {
   type        = string
-  description = "Id of the security group for the bastion instance"
+  description = "Bastion security group allowed to connect to the database."
 }
 
 variable "cluster_config" {
@@ -83,24 +83,15 @@ variable "db_instance_class" {
   description = "The RDS instance class for the docs-rs database"
 }
 
-variable "builder_provisioning" {
-  description = "First-boot ECS host provisioning with compressed Ansible role files from this checkout."
-  type = object({
-    role_files           = map(string)
-    common_role_files    = map(string)
-    common_variables     = string
-    sudo_users           = list(string)
-    ubuntu_pro_parameter = optional(string, "/docs-rs/ubuntu-pro-token")
-  })
-  nullable = false
+variable "builder_ubuntu_pro_parameter" {
+  description = "Local SSM SecureString containing the Ubuntu Pro token for first-boot activation."
+  type        = string
+  default     = "/docs-rs/ubuntu-pro-token"
+  nullable    = false
 
   validation {
-    condition = (
-      contains(keys(var.builder_provisioning.role_files), "tasks/main.yml") &&
-      contains(keys(var.builder_provisioning.common_role_files), "tasks/main.yml") &&
-      alltrue([for path in concat(keys(var.builder_provisioning.role_files), keys(var.builder_provisioning.common_role_files)) : !startswith(path, "/") && !contains(split("/", path), "..")])
-    )
-    error_message = "Supply relative role file paths including tasks/main.yml."
+    condition     = startswith(var.builder_ubuntu_pro_parameter, "/")
+    error_message = "The Ubuntu Pro parameter must be an absolute SSM parameter path."
   }
 }
 
