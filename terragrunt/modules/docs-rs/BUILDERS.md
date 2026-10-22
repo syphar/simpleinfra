@@ -1,129 +1,156 @@
-# docs.rs ECS builders
+# docs.rs EC2 builders
 
-Terraform provisions dedicated Ubuntu 24.04 amd64 EC2 hosts and runs one ECS
-builder service per host. First-boot provisioning uses
-[`templates/builder-startup.sh`](templates/builder-startup.sh), rendered into
-gzip-compressed EC2 user data. No Ansible checkout, collection, or custom AMI is
-required. Terraform checks the compressed 16 KiB user-data limit.
+Builders run as Docker containers managed by systemd on dedicated Ubuntu 24.04
+amd64 EC2 hosts. Terraform creates an Auto Scaling group (ASG), a Launch Template,
+and gzip-compressed first-boot user data. Builders do not use ECS or Ansible.
+Web, watcher, and admin workloads continue using ECS/Fargate.
 
-## Provisioning
+## Configuration and scaling
 
-Before launching hosts, create `/docs-rs/ubuntu-pro-token` as an SSM SecureString
-in each docs.rs account in `us-east-1`, using the default SSM encryption key. Both
-accounts can use the existing subscription token. Terraform manages permission
-to read it, not its value. `builder_ubuntu_pro_parameter` overrides the path.
+`builder_count` sets the ASG's minimum, maximum, and desired capacity. All hosts
+use `builder_config` for the instance type, EBS settings, and build limits. They
+use the first shared subnet and receive public IPs for outbound internet access.
+The security group has no inbound rules, including SSH. No interactive host-access
+method or automatic workload scaling policy is configured.
 
-The startup script runs as root and:
+Hosts have generated instance identities rather than stable numbered names or
+DNS records. Outputs expose `builder_autoscaling_group_name`,
+`builder_launch_template_id`, `builder_launch_template_version`, and
+`builder_repository_url`.
 
-1. Installs host packages and the AWS CLI, and sets the hostname.
-2. Fetches the Ubuntu Pro token with the instance role and attaches the
-   subscription using a temporary, root-only config file. The token is not put
-   in command arguments, user data, Terraform state, or bootstrap logs. The
-   temporary directory is removed when the script exits.
-3. Applies the targeted kernel-module mitigations also used by `common`, and
-   enables unattended security upgrades without automatic reboots.
-4. Installs checksum-pinned gVisor, configures Docker, and runs a gVisor smoke
-   test with container networking disabled.
-5. Installs checksum-pinned ECS-Init, writes its agent configuration and systemd
-   unit, enables daily Docker cleanup, and starts ECS.
-6. Waits for registration with the expected ECS cluster, retrying for about five
-   minutes. Registration can succeed before the builder image is published.
+The ASG replaces hosts that fail EC2 health checks. A launch lifecycle hook keeps
+new hosts in `Pending:Wait` until bootstrap sees the builder container running
+for two checks ten seconds apart. This confirms startup, not a successful crate
+build. A failed bootstrap abandons the launch; the hook also times out after
+30 minutes if bootstrap cannot report a result. Systemd retries container failures
+once the host is running; EC2 health checks do not detect every application failure.
 
-The managed ECS unit does not wait for `cloud-final.service`, because the startup
-script itself runs inside cloud-final. Bootstrap normally runs once per instance;
-subsequent boots start installed services. A failed bootstrap is visible through
-cloud-init status and logs. There is no automatic retry of the entire script.
-The script can be rerun manually; it stops ECS before changing host configuration.
+## First boot and secrets
 
-This host baseline is independent of Ansible's `common` role. It does not create
-administrative users, distribute SSH keys, install Prometheus or Datadog agents,
-configure Papertrail, or create backup scaffolding. The builder security group
-allows outbound traffic and no inbound traffic, including SSH. No alternative
-interactive host access method is provisioned yet.
+Create `/docs-rs/ubuntu-pro-token` as an SSM SecureString in each docs.rs account
+in `us-east-1`, using the default SSM encryption key. Both accounts can use the
+existing subscription token. `builder_ubuntu_pro_parameter` overrides the path.
+The existing database and GitHub token parameters must also be available.
 
-## Configuration and deployment
+The startup script installs packages and the AWS CLI, configures Ubuntu Pro,
+applies the targeted kernel mitigations, and enables unattended security updates
+without automatic reboots. It installs checksum-pinned gVisor, configures Docker,
+and runs an offline-network sandbox smoke test. It writes the builder launcher,
+systemd service, and daily cleanup timer, then starts the builder. There is no
+ECS agent. No scheduled daily AMI build or host recycling is configured yet.
 
-`builder_count` controls the number of identical hosts. `builder_config` sets
-shared instance, root EBS, and build-limit settings. Names are stable (`builder-1`,
-`builder-2`, and so on); reducing the count removes the highest-numbered hosts.
-All builders use the first shared subnet. No automatic fleet scaling is configured.
+Terraform renders non-secret configuration, the selected image, and SSM parameter
+names into `/etc/docs-rs/host.json`. `builder.service` runs
+`/usr/local/sbin/docs-rs-builder`. On every service start the launcher:
 
-The ECS agent registers the host's name as its `docsrs-builder` attribute. Each
-`docs-rs-builder-<name>` daemon service selects that attribute and runs one task
-on its host. Deployments stop the old task before starting its replacement on
-that host. This does not prevent additional manually launched tasks or implement
-a fleet-wide stop barrier.
+1. Fetches the database URL and GitHub token from SSM with the instance role.
+2. Writes non-secret settings and secret values to a root-only
+   `/run/docs-rs/builder.env`, rejecting multiline secret values.
+3. Authenticates to ECR and pulls the configured image. ECR credentials are stored
+   under the root-only `/run/docs-rs/docker` directory.
+4. Runs one container named `docs-rs-builder`, using that environment file and
+   the host Docker socket and workspace mounts.
 
-Apply the docs.rs Terragrunt unit to create hosts, services, and the
-`docs-rs-build-server` ECR repository. Publish the docs.rs `build-server` image;
-ECS retries startup if the selected image is not available yet.
-`builder_image_version` selects a tag or digest. For `latest`, force a new service
-deployment after publishing; for a pinned version, update Terraform's input.
-Rotated injected secrets require a replacement task too.
+The systemd runtime directory is removed after the service stops. Secrets are
+not embedded in user data, command arguments, or Terraform state by this launcher.
+Container environment values remain accessible to administrators with Docker
+access. Secret rotations take effect on service restart or host replacement.
 
-The execution role pulls images, injects database/GitHub secrets from SSM, and
-sends application logs to `/ecs/docs-rs-builder`. The task role grants S3 access.
-The instance role grants ECS agent permissions and read access to the local
-Ubuntu Pro parameter. Host metrics and system-log forwarding are not configured.
+The instance role grants SSM access to only the required parameters, ECR pull,
+S3 access to the docs.rs bucket, log-stream writes, and completion of its ASG's
+launch hook. The Ubuntu Pro token uses a temporary root-only file removed when
+the startup script exits. No cross-account role assumption is needed.
 
-## Build isolation and resources
+## Runtime and isolation
 
-The trusted builder uses bridge networking and the host Docker socket. It starts
-sibling crate-build containers with gVisor (`runsc`) and networking disabled.
-Docker socket access gives the trusted builder control of the host's containers;
-keep these hosts dedicated to builders. ECS-Init handles task-credential routing.
+The trusted builder uses host networking so AWS SDKs can obtain the instance
+profile credentials through IMDSv2 with a response hop limit of 1. It starts
+sibling crate-build containers through the host Docker socket, using gVisor
+(`runsc`) and networking disabled. Do not expose the Docker socket or enable host
+networking for those untrusted build containers.
 
 `build_cpu_limit` and `build_memory_limit` apply to crate-build sandboxes; memory
 accepts strings such as `6GiB`. The controller container has a separate 1 GiB
-memory limit. ECS does not account for sibling sandboxes as part of the task.
+memory limit and CPU shares of 256. Docker socket access gives the trusted
+controller control of the host's containers; dedicate the hosts to builders.
 
-## Storage and cleanup
+Application logs use Docker's `awslogs` driver. The existing CloudWatch group
+`/ecs/docs-rs-builder` is retained, with a stream per EC2 instance and seven-day
+retention. Host metrics, system-log forwarding, and Datadog are not configured.
 
-Ubuntu, Docker, and build data share one root EBS filesystem, defaulting to 64 GiB.
-There is no loopback filesystem, separate data volume, or local NVMe storage.
-Workspace or Docker growth can fill the root disk. Monitor available space and
-increase `builder_config.volume_size` when needed.
+## Deployment and replacement
 
-Host bind mounts use identical paths inside the builder:
+Publish the docs.rs `build-server` image to the `docs-rs-build-server` ECR
+repository. Prefer a commit SHA tag or digest in `builder_image_version`; the
+initial default is `latest`. The repository must exist before publishing. On an
+initial apply, hosts may wait or fail and retry until the first image is available.
+Terraform does not wait for the initial fleet's bootstrap (`wait_for_capacity_timeout
+= "0"`), so verify its state explicitly.
+
+Terraform owns the Launch Template configuration and its selected image version.
+To deploy a pinned image, update `builder_image_version` in the environment's
+Terragrunt inputs and apply the docs.rs unit. Terraform creates a new numeric
+Launch Template version, points the ASG to it, and starts an instance refresh.
+A newly selected Ubuntu AMI or changed startup configuration also triggers a
+refresh. Keep the version in infrastructure configuration so later applies do
+not revert an out-of-band image change.
+
+Refresh preferences are `MinHealthyPercentage=0` and `MaxHealthyPercentage=100`:
+old capacity is terminated before replacement capacity is launched, and the
+whole fleet may temporarily stop. Builds interrupted by termination are retried
+by the next builder, according to the application's queue recovery behavior.
+There is no graceful draining requirement in this initial version.
+
+To recycle hosts on the current template, for example after publishing `latest`,
+CI can run:
+
+```sh
+aws autoscaling start-instance-refresh \
+  --auto-scaling-group-name docs-rs-builders \
+  --preferences '{"MinHealthyPercentage":0,"MaxHealthyPercentage":100,"InstanceWarmup":120,"SkipMatching":false}'
+
+aws autoscaling describe-instance-refreshes \
+  --auto-scaling-group-name docs-rs-builders
+```
+
+The GitHub deployment role can start and inspect refreshes and publish builder
+images. It cannot edit Launch Templates. Selecting a different pinned image
+requires the infrastructure apply above. No builder ECS deploy step is needed.
+
+Replacing hosts discards their local data. The initial setup uses one root EBS
+filesystem, defaulting to 64 GiB, for Ubuntu, Docker, and builds. There is no
+loopback filesystem, separate data volume, or local NVMe storage. Monitor free
+space and increase `builder_config.volume_size` when needed.
+
+Host directories are bind-mounted at identical paths inside the controller:
 
 - `/opt/docs-rs/prefix`: builder state.
 - `/opt/docs-rs/workspace`: Rustwide toolchains, caches, sources, and builds.
 
-Data survives task replacement, reboot, and EC2 stop/start. The root volume is
-deleted on termination. Changing rendered user data replaces hosts and loses
-local caches; image/environment updates replace only tasks. Plan host maintenance
-around active builds.
-
-A root-owned `prune-disk-space.timer` runs daily with `AccuracySec=12h`:
-
-```sh
-docker container prune --force --filter 'label!=com.amazonaws.ecs.task-arn'
-docker image prune --force
-```
-
-It removes stopped containers without an ECS task label and dangling images not
-referenced by containers. Running containers, volumes, and tagged images are not
-pruned. ECS cleans up its own task containers. There is no host Cargo sweep or
-startup sandbox-cleanup container.
+These survive container restart and ordinary reboot, but not instance termination.
+A root-owned `prune-disk-space.timer` runs daily with `AccuracySec=12h`, pruning
+stopped containers and dangling unreferenced images. There are no ECS task
+containers to exclude on these dedicated hosts. Running containers and volumes
+are not pruned; there is no host Cargo sweep or startup sandbox-cleanup container.
 
 ## Staging verification
 
-With an administrative session available, inspect:
+Inspect the ASG and refresh status, confirm launch hooks complete, and run a crate
+build with artifacts uploaded to S3. Terminate a host during a build and verify
+its replacement retries the unfinished job. Confirm sandbox networking is disabled,
+instance-role credentials and SSM reads work, and application logs reach CloudWatch.
+
+With an administrative session available, these host-local commands are useful:
 
 ```sh
 sudo cloud-init status --long
 sudo tail -n 100 /var/log/cloud-init-output.log
-sudo systemctl status docker.service ecs.service prune-disk-space.timer
-sudo journalctl -u ecs.service -n 100
-sudo systemctl list-timers prune-disk-space.timer
-curl http://127.0.0.1:51678/v1/metadata
+sudo systemctl status docker.service builder.service prune-disk-space.timer
+sudo journalctl -u builder.service -n 100
 sudo docker ps
+sudo systemctl list-timers prune-disk-space.timer
 df -h /
 ```
 
-Verify every host registers with its expected attribute, each daemon service runs
-one task, Ubuntu Pro is attached, and secrets and task credentials work. Run a
-crate build and check its S3 artifacts and disabled sandbox networking. Verify
-ECS labels before relying on pruning. Test reboot and image deployment, including
-workspace preservation, stop-before-start ordering, and interrupted-build recovery.
-Cloud-init completion and ECS registration alone do not prove successful builds.
+This initial version provides no SSH or alternative interactive access. First boot,
+instance refresh, and actual queue recovery still need end-to-end staging testing.

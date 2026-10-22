@@ -31,7 +31,7 @@ variable "cluster_config" {
 }
 
 variable "builder_count" {
-  description = "Number of identical builder hosts, named builder-1, builder-2, and so on."
+  description = "Fixed desired capacity of the identical builder Auto Scaling group."
   type        = number
   nullable    = false
 
@@ -98,7 +98,7 @@ variable "builder_ubuntu_pro_parameter" {
 variable "builder_image_version" {
   type        = string
   default     = "latest"
-  description = "Builder ECR image tag or sha256 digest. Changing it updates ECS tasks, not EC2 hosts."
+  description = "Builder ECR image tag or sha256 digest. Changing it creates a launch-template version and refreshes EC2 hosts."
   validation {
     condition     = can(regex("^([A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|sha256:[a-f0-9]{64})$", var.builder_image_version))
     error_message = "The builder image version must be an image tag or sha256 digest."

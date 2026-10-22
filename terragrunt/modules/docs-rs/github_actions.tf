@@ -2,24 +2,25 @@ module "gh_oidc" {
   source = "../gha-oidc-provider"
 }
 
+# Terraform owns the image version and launch-template configuration. CI can
+# recycle the fleet (for example after publishing latest), but cannot edit the template.
 resource "aws_iam_role_policy" "builder_ci" {
   name = "deploy-builders"
   role = module.web.ci_role_name
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = concat([
+    Statement = [
       {
-        # ListServices has no resource-level permissions. Updates below are
-        # restricted to the explicitly configured builder services.
         Effect   = "Allow"
-        Action   = ["ecs:ListServices"]
+        Action   = ["autoscaling:StartInstanceRefresh"]
+        Resource = aws_autoscaling_group.builder.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["autoscaling:DescribeAutoScalingGroups", "autoscaling:DescribeInstanceRefreshes"]
         Resource = "*"
       },
-      ], length(local.builders) == 0 ? [] : [{
-        Effect   = "Allow"
-        Action   = ["ecs:UpdateService", "ecs:DescribeServices"]
-        Resource = [for service in aws_ecs_service.builder : service.id]
-    }])
+    ]
   })
 }
 

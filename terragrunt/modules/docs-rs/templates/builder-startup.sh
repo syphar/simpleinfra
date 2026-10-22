@@ -14,15 +14,23 @@ fi
 install -d -m 0755 /etc/docs-rs
 printf '%s' '${config_base64}' | base64 --decode > /etc/docs-rs/host.json
 # jq is installed below; keep package installation independent of AWS access.
+instance_id=""
 workdir=$(mktemp -d /var/tmp/docs-rs-bootstrap.XXXXXX)
 cleanup() {
+    status=$?
     rm -rf "$workdir"
+    if [ "$status" -ne 0 ] && command -v aws >/dev/null 2>&1 && [ -n "$instance_id" ]; then
+        aws autoscaling complete-lifecycle-action \
+            --auto-scaling-group-name "$(jq -r .asg_name /etc/docs-rs/host.json)" \
+            --lifecycle-hook-name "$(jq -r .launch_hook /etc/docs-rs/host.json)" \
+            --instance-id "$instance_id" --lifecycle-action-result ABANDON || true
+    fi
 }
 trap cleanup EXIT
 
-# On a manual rerun, stop the old agent before changing host configuration.
-if systemctl cat ecs.service >/dev/null 2>&1; then
-    systemctl stop ecs.service
+# On a manual rerun, stop the previous builder before changing host configuration.
+if systemctl cat builder.service >/dev/null 2>&1; then
+    systemctl stop builder.service
 fi
 
 apt-get -o Acquire::Retries=3 update
@@ -31,8 +39,14 @@ apt-get -o DPkg::Lock::Timeout=600 install -y \
 
 AWS_REGION=$(jq -r .region /etc/docs-rs/host.json)
 export AWS_DEFAULT_REGION="$AWS_REGION"
-builder_name=$(jq -r .builder_name /etc/docs-rs/host.json)
-cluster=$(jq -r .cluster /etc/docs-rs/host.json)
+metadata_token=$(curl --fail --silent --show-error --max-time 5 --noproxy '*' \
+    -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' \
+    http://169.254.169.254/latest/api/token)
+instance_id=$(curl --fail --silent --show-error --max-time 5 --noproxy '*' \
+    -H "X-aws-ec2-metadata-token: $metadata_token" \
+    http://169.254.169.254/latest/meta-data/instance-id)
+printf '%s\n' "$instance_id" > /etc/docs-rs/instance-id
+builder_name="docs-rs-builder-$instance_id"
 prefix=$(jq -r .prefix /etc/docs-rs/host.json)
 workspace=$(jq -r .workspace /etc/docs-rs/host.json)
 hostnamectl set-hostname "$builder_name"
@@ -83,7 +97,7 @@ Unattended-Upgrade::Automatic-Reboot "false";
 CONFIG
 systemctl enable --now unattended-upgrades.service
 
-install -d -m 0755 /etc/docker /etc/ecs "$prefix" "$workspace"
+install -d -m 0755 /etc/docker "$prefix" "$workspace"
 cat > /etc/docker/daemon.json <<'CONFIG'
 ${docker_config}
 CONFIG
@@ -100,45 +114,13 @@ systemctl restart docker.service
 
 docker run --rm --runtime=runsc --network=none public.ecr.aws/docker/library/alpine:3.22 true
 
-cat > /etc/ecs/ecs.config <<CONFIG
-ECS_CLUSTER=$cluster
-ECS_INSTANCE_ATTRIBUTES=$(jq -c '{"docsrs-builder": .builder_name}' /etc/docs-rs/host.json)
-ECS_ENABLE_TASK_IAM_ROLE=true
-ECS_ENABLE_AWSLOGS_EXECUTIONROLE_OVERRIDE=true
-ECS_ENABLE_TASK_CPU_MEM_LIMIT=false
-ECS_RESERVED_MEMORY=512
-ECS_AVAILABLE_LOGGING_DRIVERS=["json-file","awslogs"]
-CONFIG
-
-# Own the unit ordering so ECS can register while cloud-final is running.
-cat > /etc/systemd/system/ecs.service <<'UNIT'
-${ecs_service}
+cat > /usr/local/sbin/docs-rs-builder <<'LAUNCHER'
+${builder_launcher}
+LAUNCHER
+chmod 0755 /usr/local/sbin/docs-rs-builder
+cat > /etc/systemd/system/builder.service <<'UNIT'
+${builder_service}
 UNIT
-systemctl daemon-reload
-
-ecs_init_version=$(jq -r .ecs_init_version /etc/docs-rs/host.json)
-curl --fail --silent --show-error --location --retry 5 \
-    "https://s3.$AWS_REGION.amazonaws.com/amazon-ecs-agent-$AWS_REGION/amazon-ecs-init-$ecs_init_version.amd64.deb" \
-    -o "$workdir/ecs-init.deb"
-printf '%s  %s\n' "$(jq -r .ecs_init_sha256 /etc/docs-rs/host.json)" "$workdir/ecs-init.deb" | sha256sum --check
-# Suppress package-triggered service starts. Restore any pre-existing policy,
-# including if installation fails, before starting ECS explicitly.
-(
-    if [ -e /usr/sbin/policy-rc.d ]; then
-        cp -p /usr/sbin/policy-rc.d "$workdir/policy-rc.d"
-    fi
-    restore_policy() {
-        if [ -e "$workdir/policy-rc.d" ]; then
-            cp -p "$workdir/policy-rc.d" /usr/sbin/policy-rc.d
-        else
-            rm -f /usr/sbin/policy-rc.d
-        fi
-    }
-    trap restore_policy EXIT
-    printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
-    chmod 0755 /usr/sbin/policy-rc.d
-    apt-get -o DPkg::Lock::Timeout=600 install -y "$workdir/ecs-init.deb"
-)
 
 cat > /etc/systemd/system/prune-disk-space.service <<'UNIT'
 ${cleanup_service}
@@ -148,18 +130,27 @@ ${cleanup_timer}
 UNIT
 systemctl daemon-reload
 systemctl enable --now prune-disk-space.timer
-systemctl enable --now ecs.service
+systemctl enable builder.service
+systemctl restart --no-block builder.service
 
-# ECS registration is independent of whether a builder image is published yet.
-for attempt in $(seq 1 60); do
-    if metadata=$(curl --fail --silent --max-time 5 --noproxy '*' http://127.0.0.1:51678/v1/metadata) &&
-        jq --exit-status --arg cluster "$cluster" \
-            '(.ContainerInstanceArn | type == "string" and length > 0) and (.Cluster | split("/") | last == $cluster)' \
-            <<< "$metadata" >/dev/null; then
-        echo 'Builder host registered with ECS'
-        exit 0
+# The launch hook keeps the host Pending:Wait until its container starts.
+# Allow initial image publishing / pulls to take time; the hook times out after 30m.
+# EC2 status checks handle host failures later; systemd retries container failures.
+for attempt in $(seq 1 240); do
+    container_id=$(docker inspect --format '{{if .State.Running}}{{.Id}}{{end}}' docs-rs-builder 2>/dev/null) || container_id=""
+    if [ -n "$container_id" ]; then
+        sleep 10
+        running_id=$(docker inspect --format '{{if .State.Running}}{{.Id}}{{end}}' docs-rs-builder 2>/dev/null) || running_id=""
+        if [ "$running_id" = "$container_id" ]; then
+            aws autoscaling complete-lifecycle-action \
+                --auto-scaling-group-name "$(jq -r .asg_name /etc/docs-rs/host.json)" \
+                --lifecycle-hook-name "$(jq -r .launch_hook /etc/docs-rs/host.json)" \
+                --instance-id "$instance_id" --lifecycle-action-result CONTINUE
+            echo 'Builder container started; ASG launch hook completed'
+            exit 0
+        fi
     fi
     sleep 5
 done
-echo 'Builder host did not register with the expected ECS cluster' >&2
+echo 'Builder container did not start successfully before bootstrap timed out' >&2
 exit 1

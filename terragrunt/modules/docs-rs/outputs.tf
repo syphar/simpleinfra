@@ -23,29 +23,19 @@ output "watcher_service_arn" {
   value       = aws_ecs_service.watcher.id
 }
 
-locals {
-  builder_hosts = {
-    for name, instance in aws_instance.builder : name => {
-      instance_id        = instance.id
-      instance_type      = instance.instance_type
-      build_cpu_limit    = local.builders[name].build_cpu_limit
-      build_memory_limit = local.builders[name].build_memory_limit
-      private_ip         = instance.private_ip
-      hostname           = aws_route53_record.builder[name].fqdn
-    }
-  }
-}
-
-output "builders" {
-  description = "Builder instance details keyed by stable builder name."
-  value       = local.builder_hosts
-}
-
 output "builder_repository_url" {
   value = module.builder_ecr.url
 }
 
-output "builder_services" {
-  description = "Per-host ECS daemon services for deployment and readiness checks."
-  value       = { for name, service in aws_ecs_service.builder : name => service.name }
+output "builder_autoscaling_group_name" {
+  description = "Auto Scaling group used to scale and refresh the builder fleet."
+  value       = aws_autoscaling_group.builder.name
+}
+
+output "builder_launch_template_id" {
+  value = aws_launch_template.builder.id
+}
+
+output "builder_launch_template_version" {
+  value = aws_launch_template.builder.latest_version
 }

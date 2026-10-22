@@ -75,11 +75,10 @@ Migrations run after the web rollout and must be compatible with that version.
 
 ## Background Worker
 
-Builders run as ECS daemon tasks on dedicated Ubuntu EC2 hosts, using gVisor
-for sibling crate-build containers. Terraform owns hosts, per-host services,
-task configuration, secret references, and IAM roles. A cloud-init startup script
-installs and configures Docker, gVisor, and the ECS agent. No Ansible or custom
-AMI is required. See [builder setup and operations](BUILDERS.md).
+Builders run on dedicated Ubuntu EC2 instances in an Auto Scaling group with a
+Launch Template. A cloud-init script installs Docker and gVisor; systemd runs the
+builder container. Terraform owns the image version, host configuration, IAM,
+and fleet size. See [builder setup and operations](BUILDERS.md).
 
 ## Registry Watcher
 

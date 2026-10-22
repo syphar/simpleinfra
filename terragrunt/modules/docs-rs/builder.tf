@@ -1,118 +1,103 @@
-locals {
-  builders = {
-    for index in range(var.builder_count) : "builder-${index + 1}" => var.builder_config
-  }
-}
-
-# Preserve the existing builder and its public IP when adopting named builders.
-# Keep builder-1 in accounts that already have the singleton in state.
-moved {
-  from = aws_instance.builder
-  to   = aws_instance.builder["builder-1"]
-}
-
-moved {
-  from = aws_eip.builder
-  to   = aws_eip.builder["builder-1"]
-}
-
-moved {
-  from = aws_eip_association.builder
-  to   = aws_eip_association.builder["builder-1"]
-}
-
-moved {
-  from = aws_route53_record.builder
-  to   = aws_route53_record.builder["builder-1"]
-}
-
-resource "aws_eip" "builder" {
-  for_each = local.builders
-
-  domain = "vpc"
-
-  tags = {
-    Name = "docs-rs-${each.key}"
-  }
-}
-
-resource "aws_instance" "builder" {
-  for_each = local.builders
-
-  ami                         = data.aws_ami.ubuntu24.id
-  instance_type               = each.value.instance_type
-  subnet_id                   = var.cluster_config.subnet_ids[0]
-  vpc_security_group_ids      = [aws_security_group.builder.id]
-  iam_instance_profile        = aws_iam_instance_profile.builder.name
-  associate_public_ip_address = true
-
-  user_data_base64            = base64gzip(local.builder_user_data[each.key])
-  user_data_replace_on_change = true
-
-  # Register only after the ECS agent's instance permissions are attached.
-  depends_on = [aws_iam_role_policy_attachment.builder_agent, aws_iam_role_policy.builder_bootstrap]
-
-  metadata_options {
-    http_tokens                 = "required"
-    http_put_response_hop_limit = 1
-    http_protocol_ipv6          = "disabled"
-  }
-
-  root_block_device {
-    # Size of the volume in GiB.
-    volume_size           = each.value.volume_size
-    volume_type           = "gp3"
-    iops                  = each.value.volume_iops
-    throughput            = each.value.volume_throughput
-    delete_on_termination = true
-  }
-
-  tags = {
-    Name = "docs-rs-${each.key}"
-  }
-
-  lifecycle {
-    # Don't recreate the instance automatically when the AMI changes.
-    ignore_changes = [ami]
-
-    precondition {
-      condition     = length(base64gzip(local.builder_user_data[each.key])) / 4 * 3 - length(regex("=*$", base64gzip(local.builder_user_data[each.key]))) <= 16384
-      error_message = "Builder cloud-init exceeds EC2's 16 KiB user data limit."
-    }
-  }
-}
-
-resource "aws_eip_association" "builder" {
-  for_each = local.builders
-
-  instance_id   = aws_instance.builder[each.key].id
-  allocation_id = aws_eip.builder[each.key].id
-}
-
-# Private address for identifying the builder host.
-resource "aws_route53_record" "builder" {
-  for_each = local.builders
-
-  zone_id = var.zone_id
-  name    = "${each.key}.${var.domain}"
-  type    = "A"
-  ttl     = 300
-  records = [aws_instance.builder[each.key].private_ip]
-}
-
 module "builder_ecr" {
   source = "../ecr-repo"
   name   = "docs-rs-build-server"
 }
 
-moved {
-  from = aws_iam_role_policy_attachment.builder_agent[0]
-  to   = aws_iam_role_policy_attachment.builder_agent
+resource "aws_launch_template" "builder" {
+  name_prefix   = "docs-rs-builder-"
+  image_id      = data.aws_ami.ubuntu24.id
+  instance_type = var.builder_config.instance_type
+  user_data     = base64gzip(local.builder_user_data)
+
+  iam_instance_profile {
+    name = aws_iam_instance_profile.builder.name
+  }
+
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups             = [aws_security_group.builder.id]
+    delete_on_termination       = true
+  }
+
+  metadata_options {
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+    http_protocol_ipv6          = "disabled"
+    http_endpoint               = "enabled"
+  }
+
+  block_device_mappings {
+    device_name = data.aws_ami.ubuntu24.root_device_name
+    ebs {
+      volume_size           = var.builder_config.volume_size
+      volume_type           = "gp3"
+      iops                  = var.builder_config.volume_iops
+      throughput            = var.builder_config.volume_throughput
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags          = { Name = "docs-rs-builder" }
+  }
+
+  lifecycle {
+    create_before_destroy = true
+    precondition {
+      condition     = length(base64gzip(local.builder_user_data)) / 4 * 3 - length(regex("=*$", base64gzip(local.builder_user_data))) <= 16384
+      error_message = "Builder cloud-init exceeds EC2's 16 KiB user data limit."
+    }
+  }
 }
 
-resource "aws_iam_role_policy_attachment" "builder_agent" {
-  role       = aws_iam_role.builder.name
-  policy_arn = "arn:${data.aws_partition.builder.partition}:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+resource "aws_autoscaling_group" "builder" {
+  name                      = local.builder_asg_name
+  min_size                  = var.builder_count
+  max_size                  = var.builder_count
+  desired_capacity          = var.builder_count
+  vpc_zone_identifier       = [var.cluster_config.subnet_ids[0]]
+  health_check_type         = "EC2"
+  health_check_grace_period = 300
+  default_instance_warmup   = 120
+  # Bootstrap may wait for the first image to be published. Readiness is gated
+  # by the launch hook; terraform apply does not wait for the initial fleet.
+  wait_for_capacity_timeout = "0"
+
+  launch_template {
+    id      = aws_launch_template.builder.id
+    version = tostring(aws_launch_template.builder.latest_version)
+  }
+
+  initial_lifecycle_hook {
+    name                 = local.builder_launch_hook
+    lifecycle_transition = "autoscaling:EC2_INSTANCE_LAUNCHING"
+    heartbeat_timeout    = 1800
+    default_result       = "ABANDON"
+  }
+
+  instance_refresh {
+    strategy = "Rolling"
+    preferences {
+      min_healthy_percentage = 0
+      max_healthy_percentage = 100
+      instance_warmup        = 120
+      skip_matching          = true
+    }
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "docs-rs-builder"
+    propagate_at_launch = true
+  }
+
+  depends_on = [
+    aws_iam_role_policy.builder_startup,
+    aws_iam_role_policy.builder_s3,
+    aws_iam_role_policy_attachment.builder_ecr_pull,
+  ]
 }
 
 data "aws_ami" "ubuntu24" {
@@ -135,7 +120,7 @@ data "aws_ami" "ubuntu24" {
   }
 }
 
-// Instance permissions are for the ECS agent. Application access uses task roles.
+// The trusted builder uses the instance profile for SSM, ECR, logs, and S3.
 
 resource "aws_iam_instance_profile" "builder" {
   name = "builder"
@@ -159,7 +144,7 @@ resource "aws_iam_role" "builder" {
 }
 
 resource "aws_iam_role_policy" "builder_s3" {
-  role = aws_iam_role.builder_task.name
+  role = aws_iam_role.builder.name
   name = "builder_s3"
 
   policy = jsonencode({
