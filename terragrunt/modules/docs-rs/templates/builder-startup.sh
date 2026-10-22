@@ -39,12 +39,7 @@ apt-get -o DPkg::Lock::Timeout=600 install -y \
 
 AWS_REGION=$(jq -r .region /etc/docs-rs/host.json)
 export AWS_DEFAULT_REGION="$AWS_REGION"
-metadata_token=$(curl --fail --silent --show-error --max-time 5 --noproxy '*' \
-    -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' \
-    http://169.254.169.254/latest/api/token)
-instance_id=$(curl --fail --silent --show-error --max-time 5 --noproxy '*' \
-    -H "X-aws-ec2-metadata-token: $metadata_token" \
-    http://169.254.169.254/latest/meta-data/instance-id)
+instance_id=$(cloud-init query v1.instance_id)
 printf '%s\n' "$instance_id" > /etc/docs-rs/instance-id
 prefix=$(jq -r .prefix /etc/docs-rs/host.json)
 workspace=$(jq -r .workspace /etc/docs-rs/host.json)
