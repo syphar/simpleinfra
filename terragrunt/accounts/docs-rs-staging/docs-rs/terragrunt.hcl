@@ -35,10 +35,8 @@ inputs = {
   domain                    = "docs-rs-staging.rust-lang.net"
   bastion_security_group_id = dependency.vpc.outputs.bastion_security_group_id
   builder_provisioning = {
-    common_variables     = file("${get_repo_root()}/ansible/group_vars/all.yml")
-    sudo_users           = local.builder_sudo_users
-    ubuntu_pro_role_arn  = "arn:aws:iam::890664054962:role/docs-rs-builder-bootstrap-staging"
-    ubuntu_pro_parameter = "/staging/ansible/all/ubuntu-pro-token"
+    common_variables = file("${get_repo_root()}/ansible/group_vars/all.yml")
+    sudo_users       = local.builder_sudo_users
     common_role_files = {
       for path in fileset("${get_repo_root()}/ansible/roles/common", "**") :
       path => file("${get_repo_root()}/ansible/roles/common/${path}")

@@ -90,8 +90,7 @@ variable "builder_provisioning" {
     common_role_files    = map(string)
     common_variables     = string
     sudo_users           = list(string)
-    ubuntu_pro_role_arn  = string
-    ubuntu_pro_parameter = string
+    ubuntu_pro_parameter = optional(string, "/docs-rs/ubuntu-pro-token")
   })
   nullable = false
 

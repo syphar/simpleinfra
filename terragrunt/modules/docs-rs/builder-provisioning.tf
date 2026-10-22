@@ -11,7 +11,6 @@ locals {
             vars_builder_name         = name
             vars_prefix_path          = local.builder_prefix_path
             vars_workspace_path       = local.builder_workspace_path
-            vars_ubuntu_pro_role_arn  = var.builder_provisioning.ubuntu_pro_role_arn
             vars_ubuntu_pro_parameter = var.builder_provisioning.ubuntu_pro_parameter
           })
         },
@@ -70,8 +69,8 @@ resource "aws_iam_role_policy" "builder_bootstrap" {
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = "sts:AssumeRole"
-      Resource = var.builder_provisioning.ubuntu_pro_role_arn
+      Action   = "ssm:GetParameter"
+      Resource = "arn:${data.aws_partition.builder.partition}:ssm:${data.aws_region.builder.region}:${data.aws_caller_identity.current.account_id}:parameter${var.builder_provisioning.ubuntu_pro_parameter}"
     }]
   })
 }

@@ -1,23 +1,7 @@
 ---
-- name: Assume the infrastructure role for Ubuntu Pro activation
-  amazon.aws.sts_assume_role:
-    role_arn: "{{ vars_ubuntu_pro_role_arn }}"
-    role_session_name: docs-rs-builder-bootstrap
-    region: us-west-1
-  register: ubuntu_pro_bootstrap
-  no_log: true
-
-- name: Read the existing Ubuntu Pro subscription token
+- name: Read the account's Ubuntu Pro subscription token
   ansible.builtin.set_fact:
     vars_ubuntu_pro_token: >-
       {{ lookup('amazon.aws.ssm_parameter', vars_ubuntu_pro_parameter,
-                region='us-west-1',
-                access_key=ubuntu_pro_bootstrap.sts_creds.access_key,
-                secret_key=ubuntu_pro_bootstrap.sts_creds.secret_key,
-                session_token=ubuntu_pro_bootstrap.sts_creds.session_token) }}
-  no_log: true
-
-- name: Discard the temporary bootstrap credentials
-  ansible.builtin.set_fact:
-    ubuntu_pro_bootstrap: {}
+                region=vars_aws_region) }}
   no_log: true

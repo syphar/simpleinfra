@@ -23,14 +23,13 @@ are omitted: log forwarding is disabled and node exporter is installed but stopp
 `common` creates backup scaffolding only, not scheduled backups. Datadog agent
 installation is not part of this bootstrap yet.
 
-Before launching builders, apply `terraform/docs-rs` in the infrastructure account
-to create the environment-specific Ubuntu Pro bootstrap roles. During provisioning,
-the instance assumes its role to read the existing `/staging/ansible/all/ubuntu-pro-token`
-or `/prod/ansible/all/ubuntu-pro-token` parameter in `us-west-1`. The token and
-short-lived credentials are handled in Ansible memory with logging suppressed;
-the common role removes its temporary activation file after use. They are never
-embedded in user data or Terraform state. The instance role has no direct SSM
-access to application secrets.
+Before launching builders, create `/docs-rs/ubuntu-pro-token` as an SSM SecureString
+in each docs.rs account in `us-east-1`, using the default SSM encryption key.
+The parameter can contain the same existing subscription token; Terraform does
+not manage its value. During provisioning, the instance role can read only this
+bootstrap parameter. Ansible suppresses token logging, and the common role removes
+its temporary activation file after use. The token is never embedded in user data
+or Terraform state. Application secret access remains on the ECS execution role.
 
 Cloud-init uses a named local inventory entry for the hostname. The common role's
 remote reboot handler is disabled during local provisioning; the freshly launched
