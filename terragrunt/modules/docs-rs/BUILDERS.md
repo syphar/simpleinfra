@@ -28,7 +28,8 @@ once the host is running; EC2 health checks do not detect every application fail
 ## First boot and secrets
 
 The database and GitHub token parameters must be available in the local account.
-The startup script installs packages and the AWS CLI, then configures Docker.
+Cloud-init installs Ubuntu packages and writes the configuration, scripts, and
+systemd units. A bootstrap script installs the AWS CLI and gVisor, then starts Docker.
 It does not attach Ubuntu Pro, apply custom kernel mitigations, or configure
 unattended upgrades; OS maintenance depends on the selected AMI and host replacement.
 It installs checksum-pinned gVisor, configures Docker,

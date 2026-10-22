@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rendered by Terraform and run as root by cloud-init on first boot.
+# Installed by cloud-init and run as root on first boot.
 set -euo pipefail
 umask 022
 export DEBIAN_FRONTEND=noninteractive
@@ -11,9 +11,6 @@ if [ "$ID" != ubuntu ] || [ "$VERSION_ID" != 24.04 ] || [ "$(uname -m)" != x86_6
     exit 1
 fi
 
-install -d -m 0755 /etc/docs-rs
-printf '%s' '${config_base64}' | base64 --decode > /etc/docs-rs/host.json
-# jq is installed below; keep package installation independent of AWS access.
 instance_id=""
 workdir=$(mktemp -d /var/tmp/docs-rs-bootstrap.XXXXXX)
 cleanup() {
@@ -33,10 +30,6 @@ if systemctl cat builder.service >/dev/null 2>&1; then
     systemctl stop builder.service
 fi
 
-apt-get -o Acquire::Retries=3 update
-apt-get -o DPkg::Lock::Timeout=600 install -y \
-    ca-certificates curl jq unzip docker.io
-
 AWS_REGION=$(jq -r .region /etc/docs-rs/host.json)
 export AWS_DEFAULT_REGION="$AWS_REGION"
 instance_id=$(cloud-init query v1.instance_id)
@@ -54,9 +47,6 @@ if ! command -v aws >/dev/null 2>&1; then
 fi
 
 install -d -m 0755 /etc/docker "$prefix" "$workspace"
-cat > /etc/docker/daemon.json <<'CONFIG'
-${docker_config}
-CONFIG
 
 runsc_version=$(jq -r .runsc_version /etc/docs-rs/host.json)
 curl --fail --silent --show-error --location --retry 5 \
@@ -70,20 +60,6 @@ systemctl restart docker.service
 
 docker run --rm --runtime=runsc --network=none public.ecr.aws/docker/library/alpine:3.22 true
 
-cat > /usr/local/sbin/docs-rs-builder <<'LAUNCHER'
-${builder_launcher}
-LAUNCHER
-chmod 0755 /usr/local/sbin/docs-rs-builder
-cat > /etc/systemd/system/builder.service <<'UNIT'
-${builder_service}
-UNIT
-
-cat > /etc/systemd/system/prune-disk-space.service <<'UNIT'
-${cleanup_service}
-UNIT
-cat > /etc/systemd/system/prune-disk-space.timer <<'UNIT'
-${cleanup_timer}
-UNIT
 systemctl daemon-reload
 systemctl enable --now prune-disk-space.timer
 systemctl enable builder.service
