@@ -6,6 +6,10 @@ global_sudo_users:
   - marcoieni
   - ubiratansoares
 
+docs_rs_team_users:
+  - syphar
+  - guillaumegomez
+
 global_collect_metrics_from:
   - 52.9.166.219 # monitoring.infra.rust-lang.org
 

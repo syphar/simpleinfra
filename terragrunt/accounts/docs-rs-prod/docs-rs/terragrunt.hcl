@@ -1,7 +1,7 @@
 locals {
   builder_sudo_users = concat(
     yamldecode(file("${get_repo_root()}/ansible/group_vars/all.yml")).global_sudo_users,
-    yamldecode(file("${get_repo_root()}/ansible/envs/prod/group_vars/docs-rs-builder.yml")).vars_docs_rs_sudo_users,
+    yamldecode(file("${get_repo_root()}/ansible/group_vars/all.yml")).docs_rs_team_users,
   )
   builder_role_dir = "${get_repo_root()}/ansible/roles/docs-rs-builder"
 }

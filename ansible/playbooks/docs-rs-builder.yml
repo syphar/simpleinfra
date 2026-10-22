@@ -7,7 +7,7 @@
   roles:
 
     - role: common
-      sudo_users: "{{ global_sudo_users + vars_docs_rs_sudo_users }}"
+      sudo_users: "{{ global_sudo_users + docs_rs_team_users }}"
       ubuntu_pro_token: "{{ vars_ubuntu_pro_token }}"
 
     - role: docs-rs-builder
