@@ -17,9 +17,9 @@ module "watcher" {
   })
   computed_secrets = local.common_computed_secrets
 
-  secrets = {
+  secrets = merge(local.common_secrets, {
     DOCSRS_GITHUB_ACCESSTOKEN = "/docs-rs/github-access-token"
-  }
+  })
 }
 
 resource "aws_security_group" "watcher" {
