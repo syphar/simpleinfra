@@ -73,7 +73,10 @@ controller control of the host's containers; dedicate the hosts to builders.
 
 Application logs use Docker's `awslogs` driver. The existing CloudWatch group
 `/ecs/docs-rs-builder` is retained, with a stream per EC2 instance and seven-day
-retention. Host metrics, system-log forwarding, and Datadog are not configured.
+retention. Launcher setup output, including ECR login and image-pull failures,
+goes to the EC2 console and is available through **Get system log**. Container
+output uses the service journal and CloudWatch without being copied to the console.
+Host metrics, system-log forwarding, and Datadog are not configured.
 
 ## Deployment and replacement
 
