@@ -7,7 +7,7 @@ resource "aws_launch_template" "builder" {
   name_prefix   = "docs-rs-builder-"
   image_id      = data.aws_ami.ubuntu24.id
   instance_type = var.builder_config.instance_type
-  user_data     = base64gzip(local.builder_user_data)
+  user_data     = sensitive(base64gzip(local.builder_user_data))
 
   iam_instance_profile {
     name = aws_iam_instance_profile.builder.name
