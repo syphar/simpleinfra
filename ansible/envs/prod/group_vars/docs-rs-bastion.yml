@@ -1,2 +1,5 @@
 ---
-vars_bastion_unprivileged_users: "{{ docs_rs_team_users }}"
+
+vars_bastion_unprivileged_users:
+  - syphar
+  - guillaumegomez
