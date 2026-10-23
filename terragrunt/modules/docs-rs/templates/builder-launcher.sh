@@ -31,7 +31,7 @@ docker pull "$image"
 docker container rm --force docs-rs-builder >/dev/null 2>&1 || true
 
 exec docker run --rm --name docs-rs-builder --network host \
-    --memory 1g --memory-swap 1g --cpu-shares 256 --stop-timeout 120 \
+    --stop-timeout 120 \
     --env-file /run/docs-rs/builder.env \
     --volume /var/run/docker.sock:/var/run/docker.sock \
     --volume "$(jq -r .prefix "$config"):$(jq -r .prefix "$config")" \

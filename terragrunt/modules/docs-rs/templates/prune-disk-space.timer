@@ -1,9 +1,0 @@
-[Unit]
-Description=Daily Docker container and image cleanup
-
-[Timer]
-OnCalendar=daily
-AccuracySec=12h
-
-[Install]
-WantedBy=timers.target

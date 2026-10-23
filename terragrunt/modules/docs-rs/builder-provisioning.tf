@@ -24,12 +24,10 @@ locals {
         })
       }
       ], [for destination, source in {
-        "/etc/docker/daemon.json"                      = "builder-docker.json"
-        "/usr/local/sbin/docs-rs-builder"              = "builder-launcher.sh"
-        "/usr/local/sbin/docs-rs-builder-bootstrap"    = "builder-startup.sh"
-        "/etc/systemd/system/builder.service"          = "builder.service"
-        "/etc/systemd/system/prune-disk-space.service" = "prune-disk-space.service"
-        "/etc/systemd/system/prune-disk-space.timer"   = "prune-disk-space.timer"
+        "/etc/docker/daemon.json"                   = "builder-docker.json"
+        "/usr/local/sbin/docs-rs-builder"           = "builder-launcher.sh"
+        "/usr/local/sbin/docs-rs-builder-bootstrap" = "builder-startup.sh"
+        "/etc/systemd/system/builder.service"       = "builder.service"
         } : {
         path        = destination
         permissions = startswith(destination, "/usr/local/sbin/") ? "0755" : "0644"

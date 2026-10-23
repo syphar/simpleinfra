@@ -61,7 +61,6 @@ systemctl restart docker.service
 docker run --rm --runtime=runsc --network=none public.ecr.aws/docker/library/alpine:3.22 true
 
 systemctl daemon-reload
-systemctl enable --now prune-disk-space.timer
 systemctl enable builder.service
 systemctl restart --no-block builder.service
 

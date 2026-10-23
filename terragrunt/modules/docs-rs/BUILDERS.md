@@ -67,8 +67,8 @@ sibling crate-build containers through the host Docker socket, using gVisor
 networking for those untrusted build containers.
 
 `build_cpu_limit` and `build_memory_limit` apply to crate-build sandboxes; memory
-accepts strings such as `6GiB`. The controller container has a separate 1 GiB
-memory limit and CPU shares of 256. Docker socket access gives the trusted
+accepts strings such as `6GiB`. The controller container uses Docker defaults, with no explicit CPU or memory
+limits. Docker socket access gives the trusted
 controller control of the host's containers; dedicate the hosts to builders.
 
 Application logs use Docker's `awslogs` driver. The existing CloudWatch group
@@ -125,10 +125,8 @@ Host directories are bind-mounted at identical paths inside the controller:
 - `/opt/docs-rs/workspace`: Rustwide toolchains, caches, sources, and builds.
 
 These survive container restart and ordinary reboot, but not instance termination.
-A root-owned `prune-disk-space.timer` runs daily with `AccuracySec=12h`, pruning
-stopped containers and dangling unreferenced images. There are no ECS task
-containers to exclude on these dedicated hosts. Running containers and volumes
-are not pruned; there is no host Cargo sweep or startup sandbox-cleanup container.
+There is no scheduled Docker pruning; replacing instances discards accumulated
+containers, images, and caches. Automatic periodic recycling is not configured.
 
 ## Staging verification
 
@@ -142,10 +140,9 @@ With an administrative session available, these host-local commands are useful:
 ```sh
 sudo cloud-init status --long
 sudo tail -n 100 /var/log/cloud-init-output.log
-sudo systemctl status docker.service builder.service prune-disk-space.timer
+sudo systemctl status docker.service builder.service
 sudo journalctl -u builder.service -n 100
 sudo docker ps
-sudo systemctl list-timers prune-disk-space.timer
 df -h /
 ```
 
