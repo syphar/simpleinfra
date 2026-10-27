@@ -87,6 +87,12 @@ sibling crate-build containers through the host Docker socket, using gVisor
 (`runsc`) and networking disabled. Do not expose the Docker socket or enable host
 networking for those untrusted build containers.
 
+The controller also uses the host PID and cgroup namespaces and a read-only
+`/sys/fs/cgroup` bind mount. Rustwide resolves sandbox host PIDs from Docker,
+reads `/proc/<pid>/cgroup`, and reads host cgroup peak-memory and OOM counters.
+This is needed for gVisor sandboxes, which do not expose those counters internally.
+These settings apply only to the trusted controller, not the crate-build sandboxes.
+
 `build_cpu_limit` and `build_memory_limit` apply to crate-build sandboxes; memory
 accepts strings such as `6GiB`. The controller container uses Docker defaults,
 with no explicit CPU or memory limits. Docker socket access gives the trusted
