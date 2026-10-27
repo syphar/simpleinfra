@@ -52,11 +52,12 @@ flowchart LR
 
 The web frontend runs on ECS/Fargate behind an Application Load Balancer, with
 DNS records in [Route 53]. This module does not provision a CDN. The web service
-currently has one desired task, 0.25 vCPU, 512 MiB memory, and a local archive-index
-cache. ALB health checks use `/-/health`. Each task uses PostgreSQL and S3.
+has two desired tasks in both environments. Each task has 1 vCPU, 2 GiB memory
+including sidecars, and a local archive-index cache. ALB health checks use
+`/-/health`. Each task uses PostgreSQL and S3.
 
-The existing service supports multiple tasks by increasing `tasks_count` in
-`web-server.tf`; each task gets its own cache and database pool (up to ten
+Set `web_count` in each environment's Terragrunt inputs to change the desired
+number of tasks; each task gets its own cache and database pool (up to ten
 connections). No web autoscaling target or policy is configured.
 
 ## Shared error reporting
@@ -148,14 +149,14 @@ family and application startup command. Release telemetry consequently uses
 
 | Task | Task CPU | Task memory | Application memory limit |
 | --- | --- | --- | --- |
-| Web | 0.5 vCPU | 2 GiB | 1 GiB |
+| Web | 1 vCPU | 2 GiB | 1 GiB |
 | Admin / release | 0.5 vCPU | 2 GiB | 1 GiB |
 | Registry watcher | 1 vCPU | 5 GiB | 4 GiB |
 
 These budgets include 768 MiB for the Agent and a 256 MiB budget for Fluent Bit.
-The sidecars each reserve 64 CPU units; application CPU values are relative
+The sidecars each reserve 128 CPU units; application CPU values are relative
 CPU shares. Docs.rs configures total task resources, including sidecars. The
-shared module reserves 128 CPU units and 1024 MiB for Datadog and assigns the
+shared module reserves 256 CPU units and 1024 MiB for Datadog and assigns the
 remainder to the app. Datadog remains optional for other callers of the shared
 ECS modules.
 

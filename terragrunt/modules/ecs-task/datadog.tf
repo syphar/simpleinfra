@@ -1,5 +1,5 @@
 locals {
-  datadog_container_cpu     = 64
+  datadog_container_cpu     = 128
   datadog_agent_memory      = 768
   datadog_log_router_memory = 256
 
@@ -60,6 +60,16 @@ module "datadog_ecs_fargate_task" {
   dd_memory_limit_mib              = local.datadog_agent_memory
   dd_essential                     = true
   dd_is_datadog_dependency_enabled = true
+
+  # Allow the Agent's local health command (20s internal timeout) to finish
+  # under CPU contention instead of having ECS kill the probe after 5s.
+  dd_health_check = {
+    command      = ["CMD-SHELL", "/probe.sh"]
+    interval     = 15
+    retries      = 3
+    start_period = 60
+    timeout      = 30
+  }
 
   # Use the Agent's OTLP receiver for our existing Rust metrics exporter.
   # No DogStatsD/APM socket mounts or process namespace sharing are needed.

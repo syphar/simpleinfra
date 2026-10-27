@@ -59,7 +59,7 @@ run "datadog_enabled" {
       output.task_definition.cpu == "1024" &&
       output.task_definition.memory == "5120" &&
       length(jsondecode(output.task_definition.container_definitions)) == 3 &&
-      jsondecode(output.task_definition.container_definitions)[2].cpu == 896 &&
+      jsondecode(output.task_definition.container_definitions)[2].cpu == 768 &&
       jsondecode(output.task_definition.container_definitions)[2].memory == 4096 &&
       jsondecode(output.task_definition.container_definitions)[2].command == ["start"] &&
       length(jsondecode(output.task_definition.container_definitions)[2].dependsOn) == 2 &&
@@ -91,7 +91,11 @@ run "datadog_enabled" {
       jsondecode(output.task_definition.container_definitions)[0].secrets[0].valueFrom == var.datadog.api_key_parameter_arn &&
       jsondecode(output.task_definition.container_definitions)[0].image == "public.ecr.aws/datadog/agent:latest" &&
       jsondecode(output.task_definition.container_definitions)[0].memory == 768 &&
+      jsondecode(output.task_definition.container_definitions)[0].cpu == 128 &&
+      jsondecode(output.task_definition.container_definitions)[0].healthCheck.timeout == 30 &&
+      jsondecode(output.task_definition.container_definitions)[0].healthCheck.command == ["CMD-SHELL", "/probe.sh"] &&
       jsondecode(output.task_definition.container_definitions)[1].image == "public.ecr.aws/aws-observability/aws-for-fluent-bit:latest" &&
+      jsondecode(output.task_definition.container_definitions)[1].cpu == 128 &&
       jsondecode(output.task_definition.container_definitions)[1].firelensConfiguration.options["config-file-value"] == "/fluent-bit/configs/parse-json.conf" &&
       jsondecode(output.task_definition.container_definitions)[0].logConfiguration.logDriver == "awsfirelens" &&
       contains(jsondecode(aws_iam_role_policy.task_execution.policy).Statement[0].Resource, var.datadog.api_key_parameter_arn)
@@ -127,7 +131,7 @@ run "reject_insufficient_memory" {
 run "reject_insufficient_cpu" {
   command = plan
   variables {
-    cpu = 128
+    cpu = 256
     datadog = {
       api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
       environment           = "staging"

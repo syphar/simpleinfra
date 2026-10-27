@@ -49,7 +49,7 @@ CloudWatch group remains for callers without Datadog. Tools reading application
 logs from CloudWatch must use Datadog for enabled tasks instead.
 
 Both sidecars are essential containers. The app waits for their `HEALTHY`
-conditions, using upstream's health checks. These checks do not guarantee
+conditions, using upstream's health checks with a 30-second Agent probe timeout. These checks do not guarantee
 Datadog intake is reachable. ECS stops the task if an essential container exits.
 The app remains essential, so short-lived admin commands still stop the whole
 task when they finish. Shutdown timeouts use ECS defaults from the upstream
@@ -60,11 +60,11 @@ module reserves fixed resources for the sidecars and gives the app the remainder
 
 | Container | CPU shares | Memory limit |
 | --- | --- | --- |
-| Agent | 64 | 768 MiB |
-| Log router | 64 | 256 MiB budget; see limitation below |
-| Application | Task CPU minus 128 | Task memory minus 1024 MiB |
+| Agent | 128 | 768 MiB |
+| Log router | 128 | 256 MiB budget; see limitation below |
+| Application | Task CPU minus 256 | Task memory minus 1024 MiB |
 
-For example, `cpu = 512` and `memory = 2048` leave 384 CPU shares and 1024 MiB
+For example, `cpu = 512` and `memory = 2048` leave 256 CPU shares and 1024 MiB
 for the app. Container CPU values are relative shares, not hard CPU caps;
 containers can use spare task CPU.
 

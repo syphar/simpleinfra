@@ -22,7 +22,7 @@ resource "aws_iam_role" "task" {
         var.cpu > 2 * local.datadog_container_cpu &&
         var.memory > local.datadog_agent_memory + local.datadog_log_router_memory
       )
-      error_message = "Task resources must leave CPU and memory for the application after reserving Datadog sidecars (128 CPU units and 1024 MiB)."
+      error_message = "Task resources must leave CPU and memory for the application after reserving Datadog sidecars (${2 * local.datadog_container_cpu} CPU units and ${local.datadog_agent_memory + local.datadog_log_router_memory} MiB)."
     }
   }
 }
