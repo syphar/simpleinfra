@@ -110,7 +110,8 @@ arguments, or to the builder container. Rotate the key by replacing hosts or
 rerunning bootstrap; restarting only the Agent does not fetch a new key.
 
 The configuration uses `datadoghq.com`, `service:docs-rs-builder`, and the same
-environment as the Fargate tasks (`staging` or `production`). The Agent collects:
+environment as the Fargate tasks (`staging` or `production`). Global tags also
+apply `service:docs-rs-builder` to host metrics. The Agent collects:
 
 - Default host metrics, including CPU, memory, disk space, disk I/O, and file handles.
 - Docker metrics for the long-lived `docs-rs-builder` controller; transient crate

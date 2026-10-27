@@ -8,7 +8,7 @@ locals {
         site         = "datadoghq.com"
         env          = local.datadog.environment
         service      = "docs-rs-builder"
-        tags         = ["app:docs.rs"]
+        tags         = ["app:docs.rs", "service:docs-rs-builder"]
         logs_enabled = true
         otlp_config = {
           receiver = { protocols = { grpc = { endpoint = "127.0.0.1:4317" } } }
