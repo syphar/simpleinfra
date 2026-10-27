@@ -28,11 +28,13 @@ variable "platform_version" {
 }
 
 variable "cpu" {
-  type = number
+  description = "Application CPU units; Datadog sidecar CPU is added internally."
+  type        = number
 }
 
 variable "memory" {
-  type = number
+  description = "Application memory limit in MiB; Datadog sidecar memory is added internally."
+  type        = number
 }
 
 variable "tasks_count" {
@@ -97,7 +99,7 @@ variable "cluster_config" {
 }
 
 variable "datadog" {
-  description = "Optional Fargate Agent (task metrics and OTLP/gRPC) and FireLens logging. The API key must be an SSM parameter; use the AWS-managed SSM key or separately grant kms:Decrypt. Sidecar memory is included in the task memory budget."
+  description = "Optional Fargate Agent (task metrics and OTLP/gRPC) and FireLens logging. The API key must be an SSM parameter; use the AWS-managed SSM key or separately grant kms:Decrypt. Sidecar resources are added to the application budget and rounded up to a supported Fargate task size."
   type = object({
     api_key_parameter_arn = string
     environment           = string

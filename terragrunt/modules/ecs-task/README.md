@@ -56,24 +56,38 @@ The app remains essential, so short-lived admin commands still stop the whole
 task when they finish. Shutdown timeouts use ECS defaults from the upstream
 container definitions.
 
-Task CPU/memory values are totals for all containers. The defaults allocate:
+`cpu` and `memory` describe the **application**, not the entire task. When
+Datadog is enabled, the module adds the sidecars internally:
 
 | Container | CPU shares | Memory limit |
 | --- | --- | --- |
-| Agent | 64 | 768 MiB |
-| Log router | 64 | 256 MiB budget; see limitation below |
-| Application | Task CPU minus 128 | Task memory minus 1024 MiB |
+| Application | `cpu` | `memory` MiB |
+| Agent | 64 | 768 MiB by default |
+| Log router | 64 | 256 MiB budget by default; see limitation below |
 
-Increase the task budget before enabling Datadog. The module rejects budgets
-that leave no resources for the app. Agent memory limits, router memory budget,
-and image references are configurable; the defaults track the Agent's `7` and
-Fluent Bit's `stable` tags. Override them with immutable versions/digests for
-pinned rollouts.
+The module selects the smallest supported Linux Fargate CPU tier that fits the
+combined CPU and memory, then the smallest supported memory size within that
+tier. It rejects requests beyond the supported sizes. For example, an app with
+`cpu = 256` and `memory = 1024` needs 384 CPU units and 2048 MiB with default
+sidecars, so the task receives 512 CPU units and 2048 MiB. Additional task
+headroom does not increase the app's memory limit. Container CPU values are
+relative shares, not hard CPU caps; containers can use spare task CPU.
+
+Without Datadog, CPU/memory remain the task values, with no rounding or explicit
+container limits added, preserving existing callers. `task_definition.cpu` and
+`task_definition.memory` report the resulting **task totals**, so derived tasks
+inherit enough resources for all containers.
+
+Agent memory limits, router memory budget, and image references are configurable;
+the defaults track the Agent's `7` and Fluent Bit's `stable` tags. Override them
+with immutable versions/digests for pinned rollouts. Tasks with 8 or more vCPUs
+require Linux Fargate platform 1.4.0 or newer. See the
+[AWS size table](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html).
 
 Upstream version `1.2.2` serializes the router memory input as `memory_limit_mib`
 instead of ECS's `memory` field. It therefore does not establish a router-specific
-hard limit. We subtract its budget from the app's limit, while the overall task
-and Agent limits remain enforced. Verify router memory in staging.
+hard limit. We include its budget in the task total; the application, Agent,
+and overall task limits remain enforced. Verify router memory in staging.
 Sidecar resources increase Fargate consumption; Datadog metrics and log ingestion
 also affect billing.
 

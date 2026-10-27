@@ -27,8 +27,8 @@ locals {
   }
 
   datadog_app_settings = merge([for config in var.datadog[*] : {
-    cpu    = var.cpu - 128
-    memory = var.memory - config.agent_memory - config.log_router_memory
+    cpu    = var.cpu
+    memory = var.memory
   }]...)
 }
 
@@ -38,8 +38,8 @@ module "datadog_ecs_fargate_task" {
   count   = var.datadog == null ? 0 : 1
 
   family                   = var.name
-  cpu                      = var.cpu
-  memory                   = var.memory
+  cpu                      = local.task_size.cpu
+  memory                   = local.task_size.memory
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   ephemeral_storage        = { size_in_gib = var.ephemeral_storage_gb }
@@ -64,7 +64,7 @@ module "datadog_ecs_fargate_task" {
 
   dd_registry                      = local.datadog_agent_image[0]
   dd_image_version                 = local.datadog_agent_image[1]
-  dd_cpu                           = 64
+  dd_cpu                           = local.datadog_container_cpu
   dd_memory_limit_mib              = var.datadog.agent_memory
   dd_essential                     = true
   dd_is_datadog_dependency_enabled = true
@@ -88,7 +88,7 @@ module "datadog_ecs_fargate_task" {
     fluentbit_config = {
       registry      = local.datadog_router_image[0]
       image_version = local.datadog_router_image[1]
-      cpu           = 64
+      cpu           = local.datadog_container_cpu
       # Upstream 1.2.2 emits this as memory_limit_mib, not ECS's memory field.
       # Treat it as a budget; only the task/app/Agent hard limits are enforced.
       memory_limit_mib                 = var.datadog.log_router_memory

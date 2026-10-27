@@ -19,12 +19,20 @@ variable "command" {
 
 variable "cpu" {
   type        = number
-  description = "The number of CPU units used for the task"
+  description = "Application CPU units; Datadog sidecar CPU is added internally."
+  validation {
+    condition     = var.cpu > 0 && floor(var.cpu) == var.cpu
+    error_message = "Application CPU units must be a positive integer."
+  }
 }
 
 variable "memory" {
   type        = number
-  description = "Amount (in MiB) of memory used by the task"
+  description = "Application memory limit in MiB; Datadog sidecar memory is added internally."
+  validation {
+    condition     = var.memory > 0 && floor(var.memory) == var.memory
+    error_message = "Application memory must be a positive integer in MiB."
+  }
 }
 
 variable "environment_variables" {
@@ -75,7 +83,7 @@ variable "ephemeral_storage_gb" {
 }
 
 variable "datadog" {
-  description = "Optional Fargate Agent (task metrics and OTLP/gRPC) and FireLens logging. The API key must be an SSM parameter; use the AWS-managed SSM key or separately grant kms:Decrypt. Sidecar memory is included in the task memory budget."
+  description = "Optional Fargate Agent (task metrics and OTLP/gRPC) and FireLens logging. The API key must be an SSM parameter; use the AWS-managed SSM key or separately grant kms:Decrypt. Sidecar resources are added to the application budget and rounded up to a supported Fargate task size."
   type = object({
     api_key_parameter_arn = string
     environment           = string

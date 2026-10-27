@@ -22,8 +22,8 @@ mock_provider "aws" {
 variables {
   name           = "example"
   container_name = "app"
-  cpu            = 1024
-  memory         = 5120
+  cpu            = 512
+  memory         = 4096
   port_mappings  = []
   command        = ["start"]
   environment_variables = {
@@ -38,7 +38,9 @@ run "disabled_by_default" {
     condition = (
       length(jsondecode(output.task_definition.container_definitions)) == 1 &&
       jsondecode(output.task_definition.container_definitions)[0].logConfiguration.logDriver == "awslogs" &&
-      !can(jsondecode(output.task_definition.container_definitions)[0].dependsOn)
+      !can(jsondecode(output.task_definition.container_definitions)[0].dependsOn) &&
+      output.task_definition.cpu == tostring(var.cpu) &&
+      output.task_definition.memory == tostring(var.memory)
     )
     error_message = "Existing callers must retain one app container and CloudWatch logging."
   }
@@ -55,7 +57,10 @@ run "datadog_enabled" {
   }
   assert {
     condition = (
+      output.task_definition.cpu == "1024" &&
+      output.task_definition.memory == "5120" &&
       length(jsondecode(output.task_definition.container_definitions)) == 3 &&
+      jsondecode(output.task_definition.container_definitions)[2].cpu == 512 &&
       jsondecode(output.task_definition.container_definitions)[2].memory == 4096 &&
       jsondecode(output.task_definition.container_definitions)[2].command == ["start"] &&
       length(jsondecode(output.task_definition.container_definitions)[2].dependsOn) == 2 &&
@@ -105,13 +110,63 @@ run "disable_datadog_again" {
   }
 }
 
-run "reject_insufficient_memory" {
+run "round_small_task" {
   command = plan
   variables {
-    memory = 1024
+    cpu    = 256
+    memory = 512
     datadog = {
       api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
       environment           = "staging"
+    }
+  }
+  assert {
+    condition = output.task_definition.cpu == "512" && output.task_definition.memory == "2048"
+    error_message = "384 CPU units and 1536 MiB must round up to a valid 512/2048 task."
+  }
+}
+
+run "memory_requires_larger_cpu_tier" {
+  command = plan
+  variables {
+    cpu = 256
+    memory = 8192
+    datadog = {
+      api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
+      environment = "staging"
+      agent_memory = 1024
+      log_router_memory = 512
+    }
+  }
+  assert {
+    condition = output.task_definition.cpu == "2048" && output.task_definition.memory == "10240"
+    error_message = "Memory requirements, including custom sidecars, must increase the CPU tier when necessary."
+  }
+}
+
+run "large_task_memory_increment" {
+  command = plan
+  variables {
+    cpu = 8192
+    memory = 32768
+    datadog = {
+      api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
+      environment = "staging"
+    }
+  }
+  assert {
+    condition = output.task_definition.cpu == "16384" && output.task_definition.memory == "40960"
+    error_message = "16-vCPU tasks must round memory to an 8-GiB increment."
+  }
+}
+
+run "reject_oversized_task" {
+  command = plan
+  variables {
+    cpu = 32768
+    datadog = {
+      api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
+      environment = "staging"
     }
   }
   expect_failures = [aws_iam_role.task]
