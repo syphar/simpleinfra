@@ -43,24 +43,5 @@ locals {
         ]
       })
     },
-    {
-      path        = "/etc/datadog-agent/conf.d/process.d/conf.yaml"
-      permissions = "0644"
-      content = yamlencode({
-        init_config = {}
-        instances = [{
-          name          = "docs-rs-builder"
-          search_string = ["docs_rs_builder"]
-          exact_match   = false
-          try_sudo      = true
-        }]
-      })
-    },
-    {
-      # The Agent user needs elevated read access for process FD counts.
-      path        = "/etc/sudoers.d/datadog-builder"
-      permissions = "0440"
-      content     = "dd-agent ALL=(root) NOPASSWD: /usr/bin/ls /proc/*/fd/\n"
-    },
   ]
 }

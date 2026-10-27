@@ -115,8 +115,6 @@ environment as the Fargate tasks (`staging` or `production`). The Agent collects
 - Default host metrics, including CPU, memory, disk space, disk I/O, and file handles.
 - Docker metrics for the long-lived `docs-rs-builder` controller; transient crate
   sandboxes are excluded from container metrics.
-- Process metrics for `docs_rs_builder`, including threads and open file descriptors.
-  A scoped sudoers rule permits the Agent to list `/proc/*/fd/` for FD counts.
 - Application and launcher logs from `builder.service` in journald.
 - Bootstrap logs with journal identifier `docs-rs-builder-bootstrap`, tagged with
   `service:docs-rs-builder-bootstrap`. Initial collection includes existing journal

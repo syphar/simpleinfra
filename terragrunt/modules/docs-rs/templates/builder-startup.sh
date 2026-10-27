@@ -70,7 +70,6 @@ DD_INSTALL_ONLY=true bash "$workdir/install-datadog.sh"
 chown root:dd-agent /etc/datadog-agent/datadog.yaml
 chmod 0640 /etc/datadog-agent/datadog.yaml
 usermod -a -G docker,systemd-journal dd-agent
-visudo --check --file /etc/sudoers.d/datadog-builder
 systemctl enable datadog-agent.service
 systemctl restart datadog-agent.service
 
