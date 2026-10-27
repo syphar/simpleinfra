@@ -6,8 +6,8 @@ output "task_definition" {
   description = "Task definition settings for derived tasks sharing the same image, roles, and configuration."
   value = {
     arn                      = var.datadog == null ? aws_ecs_task_definition.task[0].arn : module.datadog_ecs_fargate_task[0].arn
-    cpu                      = tostring(local.task_size.cpu)
-    memory                   = tostring(local.task_size.memory)
+    cpu                      = tostring(var.cpu)
+    memory                   = tostring(var.memory)
     network_mode             = "awsvpc"
     task_role_arn            = aws_iam_role.task.arn
     execution_role_arn       = aws_iam_role.task_execution.arn

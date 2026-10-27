@@ -3,8 +3,8 @@ module "watcher" {
 
   name           = "docs-rs-registry-watcher"
   container_name = "app"
-  cpu            = 512
-  memory         = 4096
+  cpu            = 1024
+  memory         = 5120
   port_mappings  = []
 
   command = ["start"]

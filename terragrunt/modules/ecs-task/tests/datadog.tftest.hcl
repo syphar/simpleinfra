@@ -22,8 +22,8 @@ mock_provider "aws" {
 variables {
   name           = "example"
   container_name = "app"
-  cpu            = 512
-  memory         = 4096
+  cpu            = 1024
+  memory         = 5120
   port_mappings  = []
   command        = ["start"]
   environment_variables = {
@@ -59,7 +59,7 @@ run "datadog_enabled" {
       output.task_definition.cpu == "1024" &&
       output.task_definition.memory == "5120" &&
       length(jsondecode(output.task_definition.container_definitions)) == 3 &&
-      jsondecode(output.task_definition.container_definitions)[2].cpu == 512 &&
+      jsondecode(output.task_definition.container_definitions)[2].cpu == 896 &&
       jsondecode(output.task_definition.container_definitions)[2].memory == 4096 &&
       jsondecode(output.task_definition.container_definitions)[2].command == ["start"] &&
       length(jsondecode(output.task_definition.container_definitions)[2].dependsOn) == 2 &&
@@ -112,61 +112,25 @@ run "disable_datadog_again" {
   }
 }
 
-run "round_small_task" {
+run "reject_insufficient_memory" {
   command = plan
   variables {
-    cpu    = 256
-    memory = 512
+    memory = 1024
     datadog = {
       api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
       environment           = "staging"
     }
   }
-  assert {
-    condition = output.task_definition.cpu == "512" && output.task_definition.memory == "2048"
-    error_message = "384 CPU units and 1536 MiB must round up to a valid 512/2048 task."
-  }
+  expect_failures = [aws_iam_role.task]
 }
 
-run "memory_requires_larger_cpu_tier" {
+run "reject_insufficient_cpu" {
   command = plan
   variables {
-    cpu = 256
-    memory = 8192
+    cpu = 128
     datadog = {
       api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
-      environment = "staging"
-    }
-  }
-  assert {
-    condition = output.task_definition.cpu == "2048" && output.task_definition.memory == "9216"
-    error_message = "Memory requirements, including sidecars, must increase the CPU tier when necessary."
-  }
-}
-
-run "large_task_memory_increment" {
-  command = plan
-  variables {
-    cpu = 8192
-    memory = 32768
-    datadog = {
-      api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
-      environment = "staging"
-    }
-  }
-  assert {
-    condition = output.task_definition.cpu == "16384" && output.task_definition.memory == "40960"
-    error_message = "16-vCPU tasks must round memory to an 8-GiB increment."
-  }
-}
-
-run "reject_oversized_task" {
-  command = plan
-  variables {
-    cpu = 32768
-    datadog = {
-      api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
-      environment = "staging"
+      environment           = "staging"
     }
   }
   expect_failures = [aws_iam_role.task]

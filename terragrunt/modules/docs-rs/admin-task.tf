@@ -3,9 +3,9 @@ module "admin" {
 
   name           = "docs-rs-admin"
   container_name = "app"
-  # Application resources; the ECS module adds Datadog sidecars.
-  cpu           = 256
-  memory        = 1024
+  # Total task resources, including Datadog; leave 1 GiB for the app.
+  cpu           = 512
+  memory        = 2048
   port_mappings = []
   datadog       = local.datadog
 

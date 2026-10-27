@@ -18,8 +18,11 @@ resource "aws_iam_role" "task" {
 
   lifecycle {
     precondition {
-      condition     = var.datadog == null ? true : length(local.fitting_task_sizes) > 0
-      error_message = "Application resources plus Datadog sidecars exceed the supported Linux Fargate task sizes."
+      condition = var.datadog == null ? true : (
+        var.cpu > 2 * local.datadog_container_cpu &&
+        var.memory > local.datadog_agent_memory + local.datadog_log_router_memory
+      )
+      error_message = "Task resources must leave CPU and memory for the application after reserving Datadog sidecars (128 CPU units and 1024 MiB)."
     }
   }
 }

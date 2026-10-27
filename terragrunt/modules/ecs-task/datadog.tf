@@ -1,4 +1,8 @@
 locals {
+  datadog_container_cpu     = 64
+  datadog_agent_memory      = 768
+  datadog_log_router_memory = 256
+
   cloudwatch_logging = {
     logDriver = "awslogs"
     options = {
@@ -18,8 +22,8 @@ locals {
   }
 
   datadog_app_settings = merge([for config in var.datadog[*] : {
-    cpu    = var.cpu
-    memory = var.memory
+    cpu    = var.cpu - 2 * local.datadog_container_cpu
+    memory = var.memory - local.datadog_agent_memory - local.datadog_log_router_memory
   }]...)
 }
 
@@ -29,8 +33,8 @@ module "datadog_ecs_fargate_task" {
   count   = var.datadog == null ? 0 : 1
 
   family                   = var.name
-  cpu                      = local.task_size.cpu
-  memory                   = local.task_size.memory
+  cpu                      = var.cpu
+  memory                   = var.memory
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   ephemeral_storage        = { size_in_gib = var.ephemeral_storage_gb }

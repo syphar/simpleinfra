@@ -154,10 +154,10 @@ family and application startup command. Release telemetry consequently uses
 
 These budgets include 768 MiB for the Agent and a 256 MiB budget for Fluent Bit.
 The sidecars each reserve 64 CPU units; application CPU values are relative
-CPU shares. Docs.rs configures only application resources (256 CPU units and
-1024 MiB for web/admin; 512 CPU units and 4096 MiB for the watcher). The shared
-module adds sidecars and rounds the totals to a supported Fargate size. Datadog
-remains optional for other callers of the shared ECS modules.
+CPU shares. Docs.rs configures total task resources, including sidecars. The
+shared module reserves 128 CPU units and 1024 MiB for Datadog and assigns the
+remainder to the app. Datadog remains optional for other callers of the shared
+ECS modules.
 
 The Agent collects task/container metrics and receives application OpenTelemetry
 metrics at `http://localhost:4317`. FireLens ships JSON application logs to

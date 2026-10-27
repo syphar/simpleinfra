@@ -12,9 +12,9 @@ module "web" {
   name               = "docs-rs-web"
   repo               = "rust-lang/docs.rs"
 
-  # Application resources; the ECS module adds Datadog sidecars.
-  cpu                  = 256
-  memory               = 1024
+  # Total task resources, including Datadog; leave 1 GiB for the app.
+  cpu                  = 512
+  memory               = 2048
   datadog              = local.datadog
   tasks_count          = 1
   platform_version     = "1.4.0"
