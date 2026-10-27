@@ -40,14 +40,16 @@ Per-crate memory exceptions can exceed the default build limit. Changing
 Terraform manages `/docs-rs/database-url`. The existing SecureString parameter
 `/docs-rs/github-access-token` must exist in each account and contain a valid GitHub
 token; it is shared with the registry watcher. Sentry reporting also requires
-the account-local SecureString `/docs-rs/sentry-dsn`. Terraform reads parameter
-ARNs without requesting decryption.
+the account-local SecureString `/docs-rs/sentry-dsn`. The host Datadog Agent
+requires `/docs-rs/datadog-api-key`, shared with the Fargate tasks. Terraform reads
+parameter metadata without requesting decryption.
 
 Cloud-init installs Ubuntu packages and writes the configuration, scripts, and
 systemd units. Docker configuration and executable files are written after package
-installation. The bootstrap script installs the AWS CLI and checksum-pinned
-gVisor, restarts Docker, and runs a sandbox smoke test with networking disabled.
-The smoke-test image is pulled over the host network. It then enables and starts
+installation. The bootstrap script installs the AWS CLI and host Datadog Agent first, so later
+setup failures can be shipped to Datadog. It then installs checksum-pinned gVisor,
+restarts Docker, and runs a sandbox smoke test with networking disabled. The
+smoke-test image is pulled over the host network. Finally it enables and starts
 `builder.service` and waits for the controller container before completing the
 launch hook.
 
@@ -73,8 +75,8 @@ not embedded in user data, command arguments, or Terraform state by this launche
 Container environment values remain accessible to administrators with Docker
 access. Secret rotations take effect on service restart or host replacement.
 
-The instance role grants SSM access to only the database, GitHub token, and Sentry
-parameters, ECR pull, S3 access to the docs.rs bucket, log-stream writes, and
+The instance role grants SSM access to only the database, GitHub token, Sentry,
+and Datadog parameters, ECR pull, S3 access to the docs.rs bucket, log-stream writes, and
 completion of its ASG's launch hook. No cross-account role assumption is needed.
 
 ## Runtime and isolation
@@ -97,7 +99,38 @@ goes to both the service journal and EC2 console, available through **Get system
 Bootstrap output also reaches the journal under `docs-rs-builder-bootstrap`,
 the EC2 console, and the existing cloud-init output destination. Container
 output uses the service journal and CloudWatch without being copied to the console.
-Host metrics, system-log forwarding, and Datadog are not configured.
+
+## Datadog
+
+Each EC2 host runs a native Agent 7 systemd service, installed using Datadog's
+Linux installer. The installer uses the latest Agent 7 package. Bootstrap fetches
+the API key from SSM into `/etc/datadog-agent/datadog.yaml`, readable only by root
+and the Agent group. The key is not passed to the installer environment or command
+arguments, or to the builder container. Rotate the key by replacing hosts or
+rerunning bootstrap; restarting only the Agent does not fetch a new key.
+
+The configuration uses `datadoghq.com`, `service:docs-rs-builder`, and the same
+environment as the Fargate tasks (`staging` or `production`). The Agent collects:
+
+- Default host metrics, including CPU, memory, disk space, disk I/O, and file handles.
+- Docker metrics for the long-lived `docs-rs-builder` controller; transient crate
+  sandboxes are excluded from container metrics.
+- Process metrics for `docs_rs_builder`, including threads and open file descriptors.
+  A scoped sudoers rule permits the Agent to list `/proc/*/fd/` for FD counts.
+- Application and launcher logs from `builder.service` in journald.
+- Bootstrap logs with journal identifier `docs-rs-builder-bootstrap`, tagged with
+  `service:docs-rs-builder-bootstrap`. Initial collection includes existing journal
+  entries; subsequent Agent restarts resume from the saved cursor.
+- Application OTLP metrics on `127.0.0.1:4317`. The controller uses host networking
+  and exports to `http://localhost:4317`; no inbound security-group rule is added.
+
+The Agent user belongs to `docker` and `systemd-journal`. Docker access enables
+container discovery; log collection uses journald, not automatic Docker log
+collection. Existing CloudWatch application logging remains enabled. Agent
+installation failures are visible in the EC2 console and bootstrap journal even
+if Datadog cannot start. The ASG launch is abandoned if Agent installation or
+startup fails; successful local startup does not prove Datadog intake connectivity.
+No nginx, local PostgreSQL integration, or separate OTLP Collector is installed.
 
 ## Deployment and replacement
 
@@ -197,6 +230,9 @@ sudo cloud-init status --long
 sudo tail -n 100 /var/log/cloud-init-output.log
 sudo systemctl status docker.service builder.service
 sudo journalctl -u builder.service -n 100
+sudo journalctl -t docs-rs-builder-bootstrap -n 100
+sudo datadog-agent status
+sudo datadog-agent configcheck
 sudo docker ps
 df -h /
 ```

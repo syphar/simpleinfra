@@ -52,6 +52,28 @@ fi
 
 install -d -m 0755 /etc/docker "$prefix" "$workspace"
 
+# Install the host Agent without passing its API key through installer arguments
+# or environment. The installer preserves an existing configuration file.
+install -d -m 0755 /etc/datadog-agent
+install -m 0600 /dev/null /etc/datadog-agent/datadog.yaml
+aws ssm get-parameter --name "$(jq -r .datadog_api_key_parameter /etc/docs-rs/host.json)" \
+    --with-decryption --output json \
+    | jq --exit-status --raw-output '
+        .Parameter.Value |
+        if type != "string" or length == 0 or test("[\r\n]")
+        then error("Datadog API key must be a nonempty single-line string")
+        else "api_key: " + tojson end' > /etc/datadog-agent/datadog.yaml
+cat /etc/docs-rs/datadog.yaml >> /etc/datadog-agent/datadog.yaml
+curl --fail --silent --show-error --location --retry 5 \
+    https://install.datadoghq.com/scripts/install_script_agent7.sh -o "$workdir/install-datadog.sh"
+DD_INSTALL_ONLY=true bash "$workdir/install-datadog.sh"
+chown root:dd-agent /etc/datadog-agent/datadog.yaml
+chmod 0640 /etc/datadog-agent/datadog.yaml
+usermod -a -G docker,systemd-journal dd-agent
+visudo --check --file /etc/sudoers.d/datadog-builder
+systemctl enable datadog-agent.service
+systemctl restart datadog-agent.service
+
 runsc_version=$(jq -r .runsc_version /etc/docs-rs/host.json)
 curl --fail --silent --show-error --location --retry 5 \
     "https://storage.googleapis.com/gvisor/releases/pool/$runsc_version/binary-amd64/runsc.deb" \

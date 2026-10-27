@@ -22,6 +22,9 @@ locals {
     DOCSRS_BUILD_CPU_LIMIT                           = var.builder_config.build_cpu_limit
     DOCSRS_BUILD_DEFAULT_MEMORY_LIMIT                = var.builder_config.build_memory_limit
     DOCSRS_BUILD_WORKSPACE_REINITIALIZATION_INTERVAL = "2h"
+    OTEL_EXPORTER_OTLP_ENDPOINT                      = "http://localhost:4317"
+    OTEL_SERVICE_NAME                                = "docs-rs-builder"
+    OTEL_RESOURCE_ATTRIBUTES                         = "deployment.environment.name=${local.datadog.environment}"
   }) : name => tostring(value) }
 }
 
@@ -48,6 +51,7 @@ resource "aws_iam_role_policy" "builder_startup" {
           aws_ssm_parameter.connection_url.arn,
           local.github_token_arn,
           data.aws_ssm_parameter.sentry_dsn.arn,
+          data.aws_ssm_parameter.datadog.arn,
         ]
       },
       {

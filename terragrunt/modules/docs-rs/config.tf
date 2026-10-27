@@ -48,7 +48,7 @@ data "aws_ssm_parameter" "sentry_dsn" {
   with_decryption = false
 }
 
-# Retrieve only metadata; the Fargate execution roles inject the API key.
+# Retrieve only metadata; Fargate execution roles and builder bootstrap fetch the key.
 data "aws_ssm_parameter" "datadog" {
   name            = "/docs-rs/datadog-api-key"
   with_decryption = false
