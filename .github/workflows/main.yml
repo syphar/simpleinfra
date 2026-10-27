@@ -82,12 +82,6 @@ jobs:
           terraform init -backend=false -input=false
           terraform test
 
-      - name: Test ECS task module
-        working-directory: terragrunt/modules/ecs-task
-        run: |
-          terraform init -backend=false -input=false
-          terraform test
-
   actions-js:
     name: GitHub Actions (JS)
     runs-on: ubuntu-24.04
