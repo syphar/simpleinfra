@@ -15,6 +15,15 @@ resource "aws_iam_role" "task" {
       }
     ]
   })
+
+  lifecycle {
+    precondition {
+      condition = var.datadog == null ? true : (
+        var.cpu > 128 && var.memory > var.datadog.agent_memory + var.datadog.log_router_memory
+      )
+      error_message = "The task must leave CPU and memory for the application after allocating Datadog sidecars."
+    }
+  }
 }
 
 // IAM Role used during the startup of the application, granting all

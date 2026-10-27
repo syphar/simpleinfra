@@ -136,21 +136,25 @@ Staging enables `watcher_datadog` with the account-local SecureString parameter
 `/docs-rs/datadog-api-key` and Datadog site `datadoghq.com`. Create this parameter
 before applying. Production leaves this optional setting unset.
 
-The enabled watcher task contains `app`, `datadog-agent`, and `log-router`.
+The enabled watcher uses the Datadog Fargate module, pinned to version `1.2.2`,
+and contains `app`, `datadog-agent`, and `datadog-log-router`.
 The task has 1 vCPU and 5 GiB memory: the app keeps a 4 GiB memory limit, with
-768 MiB for the Agent and 256 MiB for Fluent Bit. The Agent collects task/container
-metrics and receives the application's existing OpenTelemetry metrics at
+768 MiB for the Agent and a 256 MiB budget for Fluent Bit. The Agent collects
+task/container metrics and receives the application's existing OpenTelemetry metrics at
 `http://localhost:4317`. FireLens ships JSON application logs to Datadog with
-`service:docs-rs-registry-watcher` and `env:staging`. Sidecar diagnostics remain in
-CloudWatch `/ecs/docs-rs-registry-watcher`; application logs no longer appear there.
+`service:docs-rs-registry-watcher` and `env:staging`. Agent logs also use FireLens;
+upstream does not ship router stdout/stderr. Application logs no longer appear
+in CloudWatch `/ecs/docs-rs-registry-watcher`.
 New standalone watcher tasks use the same configuration.
 
 Apply the staging docs.rs Terragrunt unit, then confirm all three containers start,
 the app emits logs in Datadog, and metrics such as `ecs.fargate.mem.usage`,
 `ecs.fargate.cpu.usage`, `ecs.fargate.ephemeral_storage.utilized`, and application
-queue metrics appear. Check startup/export errors in the sidecars' CloudWatch
-streams if data is missing. A missing SSM parameter or invalid API key must be
-resolved before expecting telemetry. This configuration has not yet been verified
+queue metrics appear. Check ECS task/container health and stopped reasons if
+startup fails; Agent logs appear in Datadog once FireLens is delivering logs.
+The upstream router memory-limit limitation is documented in the shared module.
+A missing SSM parameter or invalid API key must be resolved before expecting
+telemetry. This configuration has not yet been verified
 against live AWS or Datadog. See [shared task monitoring configuration](../ecs-task/README.md).
 
 [terraform]: https://terraform.io

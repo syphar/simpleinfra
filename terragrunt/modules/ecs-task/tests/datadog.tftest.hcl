@@ -36,9 +36,9 @@ run "disabled_by_default" {
   command = apply
   assert {
     condition = (
-      length(jsondecode(aws_ecs_task_definition.task.container_definitions)) == 1 &&
-      jsondecode(aws_ecs_task_definition.task.container_definitions)[0].logConfiguration.logDriver == "awslogs" &&
-      !can(jsondecode(aws_ecs_task_definition.task.container_definitions)[0].dependsOn)
+      length(jsondecode(output.task_definition.container_definitions)) == 1 &&
+      jsondecode(output.task_definition.container_definitions)[0].logConfiguration.logDriver == "awslogs" &&
+      !can(jsondecode(output.task_definition.container_definitions)[0].dependsOn)
     )
     error_message = "Existing callers must retain one app container and CloudWatch logging."
   }
@@ -55,40 +55,53 @@ run "datadog_enabled" {
   }
   assert {
     condition = (
-      length(jsondecode(aws_ecs_task_definition.task.container_definitions)) == 3 &&
-      jsondecode(aws_ecs_task_definition.task.container_definitions)[0].memory == 4096 &&
-      jsondecode(aws_ecs_task_definition.task.container_definitions)[0].command == ["start"] &&
-      length(jsondecode(aws_ecs_task_definition.task.container_definitions)[0].dependsOn) == 2
+      length(jsondecode(output.task_definition.container_definitions)) == 3 &&
+      jsondecode(output.task_definition.container_definitions)[2].memory == 4096 &&
+      jsondecode(output.task_definition.container_definitions)[2].command == ["start"] &&
+      length(jsondecode(output.task_definition.container_definitions)[2].dependsOn) == 2 &&
+      alltrue([for dep in jsondecode(output.task_definition.container_definitions)[2].dependsOn : dep.condition == "HEALTHY"])
     )
     error_message = "Enabled tasks must reserve sidecar resources and preserve the app command."
   }
   assert {
     condition = (
-      jsondecode(aws_ecs_task_definition.task.container_definitions)[0].logConfiguration.logDriver == "awsfirelens" &&
-      jsondecode(aws_ecs_task_definition.task.container_definitions)[0].logConfiguration.options.Host == "http-intake.logs.datadoghq.eu" &&
-      jsondecode(aws_ecs_task_definition.task.container_definitions)[0].logConfiguration.secretOptions[0].valueFrom == var.datadog.api_key_parameter_arn &&
-      !contains(keys(jsondecode(aws_ecs_task_definition.task.container_definitions)[0].logConfiguration.options), "apikey")
+      jsondecode(output.task_definition.container_definitions)[2].logConfiguration.logDriver == "awsfirelens" &&
+      jsondecode(output.task_definition.container_definitions)[2].logConfiguration.options.Host == "http-intake.logs.datadoghq.eu" &&
+      jsondecode(output.task_definition.container_definitions)[2].logConfiguration.secretOptions[0].valueFrom == var.datadog.api_key_parameter_arn &&
+      !contains(keys(jsondecode(output.task_definition.container_definitions)[2].logConfiguration.options), "apikey")
     )
     error_message = "FireLens must send to the selected Datadog site using a secret API key."
   }
   assert {
     condition = (
-      contains(jsondecode(aws_ecs_task_definition.task.container_definitions)[0].environment, { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://localhost:4317" }) &&
-      contains(jsondecode(aws_ecs_task_definition.task.container_definitions)[0].environment, { name = "EXISTING", value = "preserved" }) &&
-      contains(jsondecode(aws_ecs_task_definition.task.container_definitions)[0].environment, { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.version=test,deployment.environment.name=staging" }) &&
-      contains(jsondecode(aws_ecs_task_definition.task.container_definitions)[1].environment, { name = "ECS_FARGATE", value = "true" }) &&
-      contains(jsondecode(aws_ecs_task_definition.task.container_definitions)[1].environment, { name = "DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT", value = "0.0.0.0:4317" })
+      contains(jsondecode(output.task_definition.container_definitions)[2].environment, { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://localhost:4317" }) &&
+      contains(jsondecode(output.task_definition.container_definitions)[2].environment, { name = "EXISTING", value = "preserved" }) &&
+      contains(jsondecode(output.task_definition.container_definitions)[2].environment, { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.version=test,deployment.environment.name=staging" }) &&
+      contains(jsondecode(output.task_definition.container_definitions)[0].environment, { name = "ECS_FARGATE", value = "true" }) &&
+      contains(jsondecode(output.task_definition.container_definitions)[0].environment, { name = "DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT", value = "0.0.0.0:4317" })
     )
     error_message = "Task metrics and the local OTLP receiver must be enabled without losing app settings."
   }
   assert {
     condition = (
-      jsondecode(aws_ecs_task_definition.task.container_definitions)[1].secrets[0].valueFrom == var.datadog.api_key_parameter_arn &&
-      jsondecode(aws_ecs_task_definition.task.container_definitions)[2].firelensConfiguration.options["config-file-value"] == "/fluent-bit/configs/parse-json.conf" &&
-      alltrue([for container in slice(jsondecode(aws_ecs_task_definition.task.container_definitions), 1, 3) : container.logConfiguration.logDriver == "awslogs"]) &&
+      jsondecode(output.task_definition.container_definitions)[0].secrets[0].valueFrom == var.datadog.api_key_parameter_arn &&
+      jsondecode(output.task_definition.container_definitions)[1].firelensConfiguration.options["config-file-value"] == "/fluent-bit/configs/parse-json.conf" &&
+      jsondecode(output.task_definition.container_definitions)[0].logConfiguration.logDriver == "awsfirelens" &&
       contains(jsondecode(aws_iam_role_policy.task_execution.policy).Statement[0].Resource, var.datadog.api_key_parameter_arn)
     )
-    error_message = "Agent and router need diagnostics, JSON parsing, and execution-role secret access."
+    error_message = "Agent logs, router JSON parsing, and execution-role SSM access must remain configured."
+  }
+}
+
+run "disable_datadog_again" {
+  command = apply
+  assert {
+    condition = (
+      length(jsondecode(output.task_definition.container_definitions)) == 1 &&
+      jsondecode(output.task_definition.container_definitions)[0].logConfiguration.logDriver == "awslogs" &&
+      output.task_arn == aws_ecs_task_definition.task[0].arn
+    )
+    error_message = "Disabling Datadog must select the original single-container task backend."
   }
 }
 
@@ -101,5 +114,5 @@ run "reject_insufficient_memory" {
       environment           = "staging"
     }
   }
-  expect_failures = [aws_ecs_task_definition.task]
+  expect_failures = [aws_iam_role.task]
 }
