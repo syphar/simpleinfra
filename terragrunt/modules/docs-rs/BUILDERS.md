@@ -93,7 +93,9 @@ controller control of the host's containers; dedicate the hosts to builders.
 Application logs use Docker's `awslogs` driver. The existing CloudWatch group
 `/ecs/docs-rs-builder` is retained, with a stream per EC2 instance and seven-day
 retention. Launcher setup output, including ECR login and image-pull failures,
-goes to the EC2 console and is available through **Get system log**. Container
+goes to both the service journal and EC2 console, available through **Get system log**.
+Bootstrap output also reaches the journal under `docs-rs-builder-bootstrap`,
+the EC2 console, and the existing cloud-init output destination. Container
 output uses the service journal and CloudWatch without being copied to the console.
 Host metrics, system-log forwarding, and Datadog are not configured.
 
@@ -179,7 +181,7 @@ when Docker starts the builder container. Check console output for package,
 SSM, ECR login, and image-pull errors first. Confirm `docs-rs-build-server:latest`
 (or the configured pinned version) has been published. An instance in
 `Pending:Wait` has not completed the bootstrap readiness check. Launcher setup
-output goes to the console; after Docker starts, application output goes to the
+output goes to both the console and journal; after Docker starts, application output goes to the
 journal and CloudWatch. Secrets are fetched again on every controller restart;
 a changed token also requires restarting the watcher to reload its copy.
 

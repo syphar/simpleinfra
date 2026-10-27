@@ -3,10 +3,11 @@
 set -euo pipefail
 umask 077
 export AWS_PAGER=""
-# Expose setup failures through EC2's system log before container logging exists.
+# Keep setup output in the service journal and EC2's system log, even before
+# Datadog or container logging is available.
 # Save the service's journal descriptors for the foreground container below.
 exec 3>&1 4>&2
-exec > /dev/console 2>&1
+exec > >(tee --output-error=warn /dev/console) 2>&1
 config=/etc/docs-rs/host.json
 export AWS_DEFAULT_REGION
 AWS_DEFAULT_REGION=$(jq -r .region "$config")

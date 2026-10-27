@@ -5,6 +5,10 @@ umask 022
 export DEBIAN_FRONTEND=noninteractive
 export AWS_PAGER=""
 
+# Preserve cloud-init output while also recording bootstrap failures in the
+# journal and EC2 console. Keep console/file output if journal delivery fails.
+exec > >(tee --output-error=warn /dev/console >(systemd-cat --identifier=docs-rs-builder-bootstrap)) 2>&1
+
 . /etc/os-release
 if [ "$ID" != ubuntu ] || [ "$VERSION_ID" != 24.04 ] || [ "$(uname -m)" != x86_64 ]; then
     echo 'Builder bootstrap requires Ubuntu 24.04 amd64' >&2
