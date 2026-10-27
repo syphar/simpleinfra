@@ -26,10 +26,6 @@ inputs = {
   github_environment        = "staging"
   sentry_environment        = "staging"
   sentry_traces_sample_rate = 0.001
-  watcher_datadog = {
-    api_key_parameter = "/docs-rs/datadog-api-key"
-    site              = "datadoghq.com"
-  }
   domain                    = "docs-rs-staging.rust-lang.net"
   bastion_security_group_id = dependency.vpc.outputs.bastion_security_group_id
   builder_image_version     = "latest" # Prefer a published SHA tag or digest for repeatable rollouts.

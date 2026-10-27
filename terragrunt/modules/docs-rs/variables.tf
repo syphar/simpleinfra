@@ -70,15 +70,6 @@ variable "sentry_environment" {
   }
 }
 
-variable "watcher_datadog" {
-  description = "Enable Datadog task metrics, local OTLP ingestion, and FireLens logs for the registry watcher. Supply an account-local SSM SecureString API key."
-  type = object({
-    api_key_parameter = string
-    site              = optional(string, "datadoghq.com")
-  })
-  default = null
-}
-
 variable "sentry_traces_sample_rate" {
   type        = number
   default     = 0.001

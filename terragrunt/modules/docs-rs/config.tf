@@ -4,6 +4,13 @@ locals {
   github_token_arn       = data.aws_ssm_parameter.github_token.arn
   sentry_dsn_parameter   = "/docs-rs/sentry-dsn"
 
+  # Each account uses the same parameter name and Datadog site.
+  datadog = {
+    api_key_parameter_arn = data.aws_ssm_parameter.datadog.arn
+    environment           = var.github_environment
+    site                  = "datadoghq.com"
+  }
+
   # Shared defaults for docs.rs containers. Tasks can merge in their own
   # environment settings or override these defaults as needed.
   common_environment = {
@@ -39,5 +46,11 @@ data "aws_ssm_parameter" "github_token" {
 # Supply the DSN in each account's Parameter Store, outside Terraform.
 data "aws_ssm_parameter" "sentry_dsn" {
   name            = local.sentry_dsn_parameter
+  with_decryption = false
+}
+
+# Retrieve only metadata; the Fargate execution roles inject the API key.
+data "aws_ssm_parameter" "datadog" {
+  name            = "/docs-rs/datadog-api-key"
   with_decryption = false
 }
