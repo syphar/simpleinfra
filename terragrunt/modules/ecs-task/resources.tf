@@ -1,7 +1,9 @@
 locals {
-  datadog_container_cpu = 64
-  requested_task_cpu    = var.cpu + (var.datadog == null ? 0 : 2 * local.datadog_container_cpu)
-  requested_task_memory = var.memory + (var.datadog == null ? 0 : var.datadog.agent_memory + var.datadog.log_router_memory)
+  datadog_container_cpu     = 64
+  datadog_agent_memory      = 768
+  datadog_log_router_memory = 256
+  requested_task_cpu        = var.cpu + (var.datadog == null ? 0 : 2 * local.datadog_container_cpu)
+  requested_task_memory     = var.memory + (var.datadog == null ? 0 : local.datadog_agent_memory + local.datadog_log_router_memory)
 
   # Linux Fargate sizes, ordered by CPU and then memory. Larger sizes require
   # platform 1.4.0+. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html

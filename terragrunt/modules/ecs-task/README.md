@@ -14,7 +14,6 @@ a Datadog Agent and a Fluent Bit FireLens router:
 datadog = {
   api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/docs-rs/datadog-api-key"
   environment           = "staging"
-  site                  = "datadoghq.com"
 }
 ```
 
@@ -78,9 +77,9 @@ container limits added, preserving existing callers. `task_definition.cpu` and
 `task_definition.memory` report the resulting **task totals**, so derived tasks
 inherit enough resources for all containers.
 
-Agent memory limits, router memory budget, and image references are configurable;
-the defaults track the Agent's `7` and Fluent Bit's `stable` tags. Override them
-with immutable versions/digests for pinned rollouts. Tasks with 8 or more vCPUs
+The site is fixed to `datadoghq.com`. Both sidecars use their default public ECR
+repositories with the `latest` tag. Agent memory (768 MiB) and the router memory
+budget (256 MiB) are fixed internally. Tasks with 8 or more vCPUs
 require Linux Fargate platform 1.4.0 or newer. See the
 [AWS size table](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html).
 

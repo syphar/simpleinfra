@@ -134,8 +134,8 @@ configuration are not injected into this task yet.
 
 Web, registry watcher, admin, and release tasks use Datadog in both staging and
 production. They share the account-local SecureString parameter
-`/docs-rs/datadog-api-key` and Datadog site `datadoghq.com`, configured in
-`config.tf`. Create the parameter before applying;
+`/docs-rs/datadog-api-key`, configured in `config.tf`. The shared ECS module
+uses Datadog site `datadoghq.com`. Create the parameter before applying;
 Terraform reads its metadata, while task execution roles inject the API key.
 The API key is only exposed to the Agent and log router.
 

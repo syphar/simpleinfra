@@ -8,15 +8,6 @@ locals {
     }
   }
 
-  # The upstream module joins registry and version with a colon. Splitting on
-  # the final colon preserves both tagged images and @sha256 digest references.
-  datadog_agent_image = var.datadog == null ? null : try(
-    regex("^(.+):([^/:]+)$", var.datadog.agent_image), [var.datadog.agent_image, "latest"]
-  )
-  datadog_router_image = var.datadog == null ? null : try(
-    regex("^(.+):([^/:]+)$", var.datadog.log_router_image), [var.datadog.log_router_image, "latest"]
-  )
-
   datadog_app_environment = var.datadog == null ? {} : {
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4317"
     OTEL_SERVICE_NAME           = var.name
@@ -57,15 +48,12 @@ module "datadog_ecs_fargate_task" {
     add_dd_ecs_permissions = false
   }
   dd_api_key_secret = { arn = var.datadog.api_key_parameter_arn }
-  dd_site           = var.datadog.site
   dd_env            = var.datadog.environment
   dd_service        = var.name
   dd_tags           = "env:${var.datadog.environment}"
 
-  dd_registry                      = local.datadog_agent_image[0]
-  dd_image_version                 = local.datadog_agent_image[1]
   dd_cpu                           = local.datadog_container_cpu
-  dd_memory_limit_mib              = var.datadog.agent_memory
+  dd_memory_limit_mib              = local.datadog_agent_memory
   dd_essential                     = true
   dd_is_datadog_dependency_enabled = true
 
@@ -86,12 +74,11 @@ module "datadog_ecs_fargate_task" {
   dd_log_collection = {
     enabled = true
     fluentbit_config = {
-      registry      = local.datadog_router_image[0]
-      image_version = local.datadog_router_image[1]
+      image_version = "latest"
       cpu           = local.datadog_container_cpu
       # Upstream 1.2.2 emits this as memory_limit_mib, not ECS's memory field.
       # Treat it as a budget; only the task/app/Agent hard limits are enforced.
-      memory_limit_mib                 = var.datadog.log_router_memory
+      memory_limit_mib                 = local.datadog_log_router_memory
       is_log_router_essential          = true
       is_log_router_dependency_enabled = true
       firelens_options = {
@@ -99,7 +86,7 @@ module "datadog_ecs_fargate_task" {
         config_file_value = "/fluent-bit/configs/parse-json.conf"
       }
       log_driver_configuration = {
-        host_endpoint = var.datadog.site == "ddog-gov.com" ? "http-intake.logs.ddog-gov.datadoghq.com" : "http-intake.logs.${var.datadog.site}"
+        host_endpoint = "http-intake.logs.datadoghq.com"
         tls           = true
         compress      = "gzip"
         service_name  = var.name

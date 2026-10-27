@@ -52,7 +52,6 @@ run "datadog_enabled" {
     datadog = {
       api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
       environment           = "staging"
-      site                  = "datadoghq.eu"
     }
   }
   assert {
@@ -71,11 +70,11 @@ run "datadog_enabled" {
   assert {
     condition = (
       jsondecode(output.task_definition.container_definitions)[2].logConfiguration.logDriver == "awsfirelens" &&
-      jsondecode(output.task_definition.container_definitions)[2].logConfiguration.options.Host == "http-intake.logs.datadoghq.eu" &&
+      jsondecode(output.task_definition.container_definitions)[2].logConfiguration.options.Host == "http-intake.logs.datadoghq.com" &&
       jsondecode(output.task_definition.container_definitions)[2].logConfiguration.secretOptions[0].valueFrom == var.datadog.api_key_parameter_arn &&
       !contains(keys(jsondecode(output.task_definition.container_definitions)[2].logConfiguration.options), "apikey")
     )
-    error_message = "FireLens must send to the selected Datadog site using a secret API key."
+    error_message = "FireLens must send to the default Datadog site using a secret API key."
   }
   assert {
     condition = (
@@ -90,6 +89,9 @@ run "datadog_enabled" {
   assert {
     condition = (
       jsondecode(output.task_definition.container_definitions)[0].secrets[0].valueFrom == var.datadog.api_key_parameter_arn &&
+      jsondecode(output.task_definition.container_definitions)[0].image == "public.ecr.aws/datadog/agent:latest" &&
+      jsondecode(output.task_definition.container_definitions)[0].memory == 768 &&
+      jsondecode(output.task_definition.container_definitions)[1].image == "public.ecr.aws/aws-observability/aws-for-fluent-bit:latest" &&
       jsondecode(output.task_definition.container_definitions)[1].firelensConfiguration.options["config-file-value"] == "/fluent-bit/configs/parse-json.conf" &&
       jsondecode(output.task_definition.container_definitions)[0].logConfiguration.logDriver == "awsfirelens" &&
       contains(jsondecode(aws_iam_role_policy.task_execution.policy).Statement[0].Resource, var.datadog.api_key_parameter_arn)
@@ -134,13 +136,11 @@ run "memory_requires_larger_cpu_tier" {
     datadog = {
       api_key_parameter_arn = "arn:aws:ssm:us-east-1:123456789012:parameter/datadog/api-key"
       environment = "staging"
-      agent_memory = 1024
-      log_router_memory = 512
     }
   }
   assert {
-    condition = output.task_definition.cpu == "2048" && output.task_definition.memory == "10240"
-    error_message = "Memory requirements, including custom sidecars, must increase the CPU tier when necessary."
+    condition = output.task_definition.cpu == "2048" && output.task_definition.memory == "9216"
+    error_message = "Memory requirements, including sidecars, must increase the CPU tier when necessary."
   }
 }
 

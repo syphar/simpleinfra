@@ -4,11 +4,10 @@ locals {
   github_token_arn       = data.aws_ssm_parameter.github_token.arn
   sentry_dsn_parameter   = "/docs-rs/sentry-dsn"
 
-  # Each account uses the same parameter name and Datadog site.
+  # Each account uses the same Datadog parameter name.
   datadog = {
     api_key_parameter_arn = data.aws_ssm_parameter.datadog.arn
     environment           = var.github_environment
-    site                  = "datadoghq.com"
   }
 
   # Shared defaults for docs.rs containers. Tasks can merge in their own
