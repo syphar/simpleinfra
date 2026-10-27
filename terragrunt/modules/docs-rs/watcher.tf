@@ -3,11 +3,17 @@ module "watcher" {
 
   name           = "docs-rs-registry-watcher"
   container_name = "app"
-  cpu            = 512
-  memory         = 4096
+  cpu            = var.watcher_datadog == null ? 512 : 1024
+  memory         = var.watcher_datadog == null ? 4096 : 5120
   port_mappings  = []
 
   command = ["start"]
+
+  datadog = var.watcher_datadog == null ? null : {
+    api_key_parameter_arn = data.aws_ssm_parameter.watcher_datadog[0].arn
+    environment           = var.github_environment
+    site                  = var.watcher_datadog.site
+  }
 
   environment_variables = merge(local.common_environment, {
     DOCSRS_MIN_POOL_IDLE                  = 1
@@ -18,6 +24,13 @@ module "watcher" {
   computed_secrets = merge(local.common_computed_secrets, {
     DOCSRS_GITHUB_ACCESSTOKEN = local.github_token_arn
   })
+}
+
+# Retrieve only parameter metadata; the Fargate execution role injects the key.
+data "aws_ssm_parameter" "watcher_datadog" {
+  count           = var.watcher_datadog == null ? 0 : 1
+  name            = var.watcher_datadog.api_key_parameter
+  with_decryption = false
 }
 
 resource "aws_security_group" "watcher" {

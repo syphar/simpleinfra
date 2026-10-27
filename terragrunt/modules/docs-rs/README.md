@@ -115,7 +115,8 @@ The task runs `docs_rs_watcher start`, sharing the database and storage settings
 with the other containers. It uses its own database pool (maximum 10 connections),
 checks the registry every 30 seconds, and limits queued rebuilds to 200. Its
 registry index is stored under `/tmp` on ephemeral task storage and is fetched
-again after task replacement. Logs are written to `/ecs/docs-rs-registry-watcher`.
+again after task replacement. Logs use CloudWatch by default; the staging Datadog
+configuration below sends application logs directly to Datadog instead.
 Its security group allows outbound connections and no inbound connections.
 Database access and deletion of removed crates' S3 documentation are allowed.
 
@@ -128,6 +129,29 @@ repository updater token is injected from the existing SSM parameter
 `/docs-rs/github-access-token`, shared with builders. Rotate the parameter and
 restart both workloads to reload a changed token. GitLab tokens and Fastly
 configuration are not injected into this task yet.
+
+### Staging Datadog trial
+
+Staging enables `watcher_datadog` with the account-local SecureString parameter
+`/docs-rs/datadog-api-key` and Datadog site `datadoghq.com`. Create this parameter
+before applying. Production leaves this optional setting unset.
+
+The enabled watcher task contains `app`, `datadog-agent`, and `log-router`.
+The task has 1 vCPU and 5 GiB memory: the app keeps a 4 GiB memory limit, with
+768 MiB for the Agent and 256 MiB for Fluent Bit. The Agent collects task/container
+metrics and receives the application's existing OpenTelemetry metrics at
+`http://localhost:4317`. FireLens ships JSON application logs to Datadog with
+`service:docs-rs-registry-watcher` and `env:staging`. Sidecar diagnostics remain in
+CloudWatch `/ecs/docs-rs-registry-watcher`; application logs no longer appear there.
+New standalone watcher tasks use the same configuration.
+
+Apply the staging docs.rs Terragrunt unit, then confirm all three containers start,
+the app emits logs in Datadog, and metrics such as `ecs.fargate.mem.usage`,
+`ecs.fargate.cpu.usage`, `ecs.fargate.ephemeral_storage.utilized`, and application
+queue metrics appear. Check startup/export errors in the sidecars' CloudWatch
+streams if data is missing. A missing SSM parameter or invalid API key must be
+resolved before expecting telemetry. This configuration has not yet been verified
+against live AWS or Datadog. See [shared task monitoring configuration](../ecs-task/README.md).
 
 [terraform]: https://terraform.io
 [docs.rs]: https://docs.rs

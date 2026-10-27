@@ -52,6 +52,7 @@ resource "aws_iam_role_policy" "task_execution" {
         Resource = concat(
           values(data.aws_ssm_parameter.task).*.arn,
           values(var.computed_secrets),
+          [for config in var.datadog[*] : config.api_key_parameter_arn],
         )
       },
 

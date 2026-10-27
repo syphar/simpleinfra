@@ -10,23 +10,16 @@ resource "aws_ecs_task_definition" "task" {
   execution_role_arn       = aws_iam_role.task_execution.arn
   requires_compatibilities = ["FARGATE"]
 
-  container_definitions = jsonencode([
+  container_definitions = jsonencode(concat([
     merge({
       name      = var.container_name
       image     = module.ecr.url
       essential = true
 
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.task.name
-          "awslogs-region"        = data.aws_region.current.id
-          "awslogs-stream-prefix" = var.container_name
-        }
-      }
+      logConfiguration = jsondecode(local.application_log_configuration)
 
       environment = [
-        for name, value in var.environment_variables :
+        for name, value in merge(var.environment_variables, local.datadog_app_environment) :
         {
           name  = name
           value = value
@@ -51,9 +44,18 @@ resource "aws_ecs_task_definition" "task" {
       )
 
       portMappings = var.port_mappings
-      dockerLabels = var.docker_labels
-    }, var.command == null ? {} : { command = var.command })
-  ])
+      dockerLabels = merge(var.docker_labels, local.datadog_labels)
+    }, var.command == null ? {} : { command = var.command }, local.datadog_app_settings)
+  ], local.datadog_containers))
+
+  lifecycle {
+    precondition {
+      condition = var.datadog == null ? true : (
+        var.cpu > 128 && var.memory > var.datadog.agent_memory + var.datadog.log_router_memory
+      )
+      error_message = "The task must leave CPU and memory for the application after allocating Datadog sidecars."
+    }
+  }
 
   ephemeral_storage {
     size_in_gib = var.ephemeral_storage_gb

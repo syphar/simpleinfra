@@ -73,3 +73,27 @@ variable "ephemeral_storage_gb" {
   default     = 21
   description = "The amount of ephemeral storage (in GiB) to allocate for the task"
 }
+
+variable "datadog" {
+  description = "Optional Fargate Agent (task metrics and OTLP/gRPC) and FireLens logging. The API key must be an SSM parameter; use the AWS-managed SSM key or separately grant kms:Decrypt. Sidecar memory is included in the task memory budget."
+  type = object({
+    api_key_parameter_arn = string
+    environment           = string
+    site                  = optional(string, "datadoghq.com")
+    agent_image           = optional(string, "public.ecr.aws/datadog/agent:7")
+    log_router_image      = optional(string, "public.ecr.aws/aws-observability/aws-for-fluent-bit:stable")
+    agent_memory          = optional(number, 768)
+    log_router_memory     = optional(number, 256)
+  })
+  default = null
+
+  validation {
+    condition = var.datadog == null ? true : (
+      can(regex("^arn:[^:]+:ssm:[^:]+:[0-9]{12}:parameter/.+", var.datadog.api_key_parameter_arn)) &&
+      length(trimspace(var.datadog.environment)) > 0 &&
+      contains(["datadoghq.com", "us3.datadoghq.com", "us5.datadoghq.com", "datadoghq.eu", "ap1.datadoghq.com", "ap2.datadoghq.com", "uk1.datadoghq.com", "ddog-gov.com"], var.datadog.site) &&
+      var.datadog.agent_memory > 0 && var.datadog.log_router_memory > 0
+    )
+    error_message = "Datadog requires an SSM parameter ARN, a nonempty environment, a supported site, and positive sidecar memory limits."
+  }
+}
