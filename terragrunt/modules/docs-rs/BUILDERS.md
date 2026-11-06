@@ -55,7 +55,7 @@ smoke-test image is pulled over the host network. Finally it enables and starts
 launch hook.
 
 There is no ECS agent, Ubuntu Pro activation, custom kernel mitigation setup,
-unattended-upgrade configuration, or daily cleanup timer. OS maintenance depends
+or unattended-upgrade configuration. OS maintenance depends
 on the selected AMI and host replacement. Daily AMI builds and automatic periodic
 host recycling are not configured.
 
@@ -103,6 +103,19 @@ Bootstrap output also reaches the journal under `docs-rs-builder-bootstrap`,
 the EC2 console, and the existing cloud-init output destination. Container
 output uses the service journal and Datadog without being copied to the console.
 
+gVisor writes info/warning runtime records as JSONL and Go panic reports as
+separate text files under `/var/log/runsc`. Filenames contain the invocation
+timestamp, sandbox/container ID, and runtime command (`boot`, `exec`, etc.).
+The long-lived `boot` log spans multiple documentation commands in one sandbox.
+Debug verbosity and syscall tracing are not enabled. These host files are
+separate from Docker's `local` logs and are not mounted into crate sandboxes.
+
+`docs-rs-gvisor-log-cleanup.timer` runs hourly and removes matching files
+unmodified for more than 24 hours. This assumes sandbox lifetimes of at most
+one hour; Datadog retains the diagnostic history. The cleanup is not an
+acknowledgement of ingestion, so an Agent outage longer than retention can lose
+local logs. It does not prune Docker containers, images, or build artifacts.
+
 ## Datadog
 
 Each EC2 host runs a native Agent 7 systemd service, installed using Datadog's
@@ -123,12 +136,21 @@ apply `service:docs-rs-builder` to host metrics. The Agent collects:
 - Bootstrap logs with journal identifier `docs-rs-builder-bootstrap`, tagged with
   `service:docs-rs-builder-bootstrap`. Initial collection includes existing journal
   entries; subsequent Agent restarts resume from the saved cursor.
+- gVisor JSONL and multiline panic files, tagged with `service:docs-rs-gvisor`,
+  `source:gvisor`, `runtime:runsc`, and `log_kind:runtime` or `log_kind:panic`.
+  File collection automatically supplies `filename` and `dirname` tags.
 - Application OTLP metrics on `127.0.0.1:4317`. The controller uses host networking
   and exports to `http://localhost:4317`; no inbound security-group rule is added.
 
 The Agent user belongs to `docker` and `systemd-journal`. Docker access enables
-container discovery; log collection uses journald, not automatic Docker log
-collection. Agent installation failures are visible in the EC2 console and
+container discovery; log collection uses journald and explicit gVisor file sources,
+not automatic Docker log collection. The root-owned gVisor log directory is
+traversable by the Agent, and runtime-created files are readable at mode `0644`.
+The Agent can tail up to 2,000 files and prioritizes modification time when
+wildcard matches exceed that limit. This keeps newly written panic files eligible
+even when their filename timestamp is old; the limit does not guarantee every
+file will be collected. Check the Logs Agent's file counts for starvation.
+Agent installation failures are visible in the EC2 console and
 bootstrap journal even if Datadog cannot start. The ASG launch is abandoned if Agent installation or
 startup fails; successful local startup does not prove Datadog intake connectivity.
 No nginx, local PostgreSQL integration, or separate OTLP Collector is installed.
@@ -137,6 +159,12 @@ In Datadog Logs Explorer, use `service:docs-rs-builder env:staging` for controll
 and launcher logs, or `service:docs-rs-builder-bootstrap env:staging` for bootstrap
 logs. Use `env:production` for the production builders. Hosts are identified by
 their EC2 instance IDs; group metrics by `host` to compare builders.
+
+For sandbox diagnostics, search `service:docs-rs-gvisor env:staging` (or
+`env:production`). Add `log_kind:panic` for panic reports or
+`filename:*CONTAINER_ID*` to correlate a panic with runtime logs. Panic records
+do not directly identify the crate; mount paths in matching Gofer logs can
+provide its name and version.
 
 Host memory uses `system.mem.*` metrics; controller-container memory uses
 `container.memory.*`. Host memory includes the controller, crate-build sandboxes,
@@ -246,6 +274,9 @@ sudo journalctl -u builder.service -n 100
 sudo journalctl -t docs-rs-builder-bootstrap -n 100
 sudo datadog-agent status
 sudo datadog-agent configcheck
+sudo ls -lt /var/log/runsc
+sudo systemctl list-timers docs-rs-gvisor-log-cleanup.timer
+sudo journalctl -u docs-rs-gvisor-log-cleanup.service -n 20
 sudo docker ps
 df -h /
 ```

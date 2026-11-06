@@ -49,7 +49,7 @@ if ! command -v aws >/dev/null 2>&1; then
     "$workdir/aws/install"
 fi
 
-install -d -m 0755 /etc/docker "$prefix" "$workspace"
+install -d -m 0755 /etc/docker /var/log/runsc "$prefix" "$workspace"
 
 # Install the host Agent without passing its API key through installer arguments
 # or environment. The installer preserves an existing configuration file.
@@ -85,6 +85,7 @@ systemctl restart docker.service
 docker run --rm --runtime=runsc --network=none public.ecr.aws/docker/library/alpine:3.22 true
 
 systemctl daemon-reload
+systemctl enable --now docs-rs-gvisor-log-cleanup.timer
 systemctl enable builder.service
 systemctl restart --no-block builder.service
 

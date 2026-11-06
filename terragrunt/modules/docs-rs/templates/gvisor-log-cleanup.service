@@ -1,0 +1,7 @@
+[Unit]
+Description=Remove gVisor logs older than 24 hours
+ConditionPathIsDirectory=/var/log/runsc
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/docs-rs-gvisor-log-cleanup

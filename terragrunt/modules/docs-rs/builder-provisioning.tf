@@ -25,10 +25,13 @@ locals {
         })
       }
       ], local.builder_datadog_files, [for destination, source in {
-        "/etc/docker/daemon.json"                   = "builder-docker.json"
-        "/usr/local/sbin/docs-rs-builder"           = "builder-launcher.sh"
-        "/usr/local/sbin/docs-rs-builder-bootstrap" = "builder-startup.sh"
-        "/etc/systemd/system/builder.service"       = "builder.service"
+        "/etc/docker/daemon.json"                                = "builder-docker.json"
+        "/usr/local/sbin/docs-rs-builder"                        = "builder-launcher.sh"
+        "/usr/local/sbin/docs-rs-builder-bootstrap"              = "builder-startup.sh"
+        "/etc/systemd/system/builder.service"                    = "builder.service"
+        "/usr/local/sbin/docs-rs-gvisor-log-cleanup"             = "gvisor-log-cleanup.sh"
+        "/etc/systemd/system/docs-rs-gvisor-log-cleanup.service" = "gvisor-log-cleanup.service"
+        "/etc/systemd/system/docs-rs-gvisor-log-cleanup.timer"   = "gvisor-log-cleanup.timer"
         } : {
         path        = destination
         permissions = startswith(destination, "/usr/local/sbin/") ? "0755" : "0644"

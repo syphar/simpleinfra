@@ -4,7 +4,12 @@
   "runtimes": {
     "runsc": {
       "path": "/usr/bin/runsc",
-      "runtimeArgs": ["--platform=systrap"]
+      "runtimeArgs": [
+        "--platform=systrap",
+        "--debug-log=/var/log/runsc/%TIMESTAMP%.%ID%.%COMMAND%.jsonl",
+        "--debug-log-format=json",
+        "--panic-log=/var/log/runsc/%TIMESTAMP%.%ID%.%COMMAND%.panic.log"
+      ]
     }
   },
   "log-driver": "local",
