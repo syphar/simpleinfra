@@ -12,7 +12,7 @@ use fastly::{
     },
     log::Endpoint,
 };
-use fastly_access_log::{LogLineV1Builder, collect_request, collect_response};
+use fastly_access_log::{LogLineV1Builder, collect_request, collect_response, tls_ja4};
 use std::io::Write;
 use tracing::{error, warn};
 use uuid::Uuid;
@@ -36,6 +36,7 @@ const FASTLY_CLIENT_IP: HeaderName = HeaderName::from_static("fastly-client-ip")
 const SURROGATE_CONTROL: HeaderName = HeaderName::from_static("surrogate-control");
 const X_COMPRESS_HINT: HeaderName = HeaderName::from_static("x-compress-hint");
 const X_FORWARDED_HOST: HeaderName = HeaderName::from_static("x-forwarded-host");
+const X_TLS_JA4: HeaderName = HeaderName::from_static("x-tls-ja4");
 const X_ORIGIN_AUTH: HeaderName = HeaderName::from_static("x-origin-auth");
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 
@@ -173,6 +174,15 @@ fn handle(access_log: &mut LogLineV1Builder, mut req: Request) -> Result<Respons
     }
 
     if shield.response_is_for_client() {
+        // Expose the JA4 TLS fingerprint to NGWAF rules (e.g. rate limits grouped by JA4).
+        // Always overwrite or remove, so clients can't supply their own value.
+        match tls_ja4(&req) {
+            Some(ja4) => req.set_header(X_TLS_JA4, ja4),
+            None => {
+                req.remove_header(X_TLS_JA4);
+            }
+        }
+
         if let Some(ngwaf) = &ngwaf {
             req = match ngwaf.inspect(req) {
                 Ok(req) => req,

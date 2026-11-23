@@ -73,6 +73,12 @@ pub struct HttpDetails {
 pub struct TlsDetails {
     cipher: Option<String>,
     protocol: Option<String>,
+    ja4: Option<String>,
+}
+
+/// JA4 fingerprint of the client TLS handshake.
+pub fn tls_ja4(request: &Request) -> Option<String> {
+    request.get_tls_ja4().map(str::to_owned)
 }
 
 /// Collect access-log fields available before the request is sent to a backend.
@@ -109,6 +115,7 @@ pub fn collect_request(
                 .map(str::to_owned),
         )
         .protocol(request.get_tls_protocol().ok().flatten().map(str::to_owned))
+        .ja4(tls_ja4(request))
         .build()
         .ok();
 
